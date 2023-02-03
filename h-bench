@@ -1,0 +1,278 @@
+#!/bin/bash
+
+# helper script to launch kubevirt guest clusters
+
+# set scrict mode
+set -Eeuo pipefail
+
+# some global constants
+prog="${0##*/}"                                         # program name
+usage="Usage: $prog [ <cluster_name> [ <test_id> ] ]"   # usage string
+conf_file=~/".$prog.conf"                               # config file name
+start_time="$EPOCHSECONDS"                              # script start time
+time="$(date -d "@$start_time" '+%F_%T')"               # time string
+div="$(printf '=%.s' {1..40})"                          # divider line string
+
+#-- functions ------------------------------------------------------------------
+
+# die fn takes an optional error message to display
+# if missing, the error message defaults to the usage string
+die() {
+    printf '%s\n' "${@:-$usage}" >&2
+    exit 1
+}
+
+# none of the functions below use global vars
+# so all input is passed as arguments
+
+get_domain() {
+    oc get ingresscontroller -n openshift-ingress-operator \
+        default -o jsonpath='{.status.domain}'
+}
+
+create_cluster() {
+    local cluster="$1" domain="$2" image="$3" pull_secret="$4"
+    hypershift create cluster kubevirt \
+        --name "$cluster" \
+        --base-domain "$domain" \
+        --node-pool-replicas 3 \
+        --control-plane-availability-policy 'HighlyAvailable' \
+        --memory '8Gi' \
+        --cores '8' \
+        --release-image "$image" \
+        --pull-secret "$pull_secret"
+}
+
+wait_provision() {
+    local cluster="$1" namespace="$2" timeout="$3"
+    let timeout+=$EPOCHSECONDS
+    while sleep 2; do
+        oc get vms -n "$namespace" | grep -qF "$cluster" && break
+        ((EPOCHSECONDS>timeout)) \
+            && die "Timeout while waiting for provisioning of $cluster"
+    done
+}
+
+wait_ready() {
+    local namespace="$1" timeout="$2"
+    oc wait --for "condition=Ready" --namespace "$namespace" \
+        vm --all --timeout "${timeout}s"
+    # need to figure out a way to know if it timed out or not
+}
+
+wait_available() {
+    local kube_conf="$1" timeout="$2"
+    oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" \
+        co --all --timeout "${timeout}s"
+    # need to figure out a way to know if it timed out or not
+}
+
+create_kubeconfig() {
+    local cluster="$1" kube_conf="$2"
+    hypershift create kubeconfig --name="$cluster" > "$kube_conf"
+}
+
+get_nodeport() {
+    local cluster="$1" kube_conf="$2"
+    oc --kubeconfig "$kube_conf" get services \
+    -n openshift-ingress router-nodeport-default \
+    -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
+}
+
+wait_nodeport() {
+    local cluster="$1" kube_conf="$2" timeout="$3"
+    let timeout+=$EPOCHSECONDS
+    while sleep 2; do
+        local port="$(get_nodeport "$cluster" "$kube_conf")"
+        [[ -n "$port" ]] && break
+        ((EPOCHSECONDS>timeout)) \
+            && die "Timeout while waiting for nodeport on $cluster"
+    done
+    printf '%s\n' "$port"
+}
+
+create_ingress_service() {
+    local cluster="$1" namespace="$2" nodeport="$3"
+    oc apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: $cluster
+  name: apps-ingress
+  namespace: $namespace
+spec:
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: https-443
+    port: 443
+    protocol: TCP
+    targetPort: $nodeport
+  selector:
+    kubevirt.io: virt-launcher
+  sessionAffinity: None
+  type: ClusterIP
+EOF
+}
+
+create_ingress_route() {
+    local cluster="$1" namespace="$2" cluster_domain="$3"
+    oc apply -f - <<EOF
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ${cluster}-443
+  namespace: $namespace
+spec:
+  host: data.apps.$cluster_domain
+  wildcardPolicy: Subdomain
+  tls:
+    termination: passthrough
+  port:
+    targetPort: https-443
+  to:
+    kind: Service
+    name: apps-ingress
+    weight: 100
+EOF
+}
+
+
+#-- configuration --------------------------------------------------------------
+
+# create a config file if none exists
+if [[ ! -e "$conf_file" ]]; then
+    cat <<'END' > "$conf_file"
+
+#edit this config file with care (normal bash syntax)
+
+cluster="TestCluster-$time"     # default cluster name ($time is date_time)
+dir=~/"hypershift"              # working directory containing other files
+pull_secret="$dir/pull-secret"  # file containing the hypershift secret key
+
+# Disk image to use
+image="quay.io/openshift-release-dev/ocp-release@sha256:a4e3391f3ff6e33211a91ccd446f2dc57075301e3b974023172b8b8f6aac5461"
+
+# Filenames may contain <id> which inserts the test ID
+control_log="$dir/<id>_control.log"         # control plane output
+provision_log="$dir/<id>_provision.log"     # provisioning phase output
+ingress_log="$dir/<id>_ingress.log"         # ingress phase output
+deploy_log="$dir/<id>_deployment.log"       # deployment phase output
+kube_conf="$dir/<id>_kubeconfig.conf"       # kubeconfig file
+timing_csv="$dir/<id>_timings.csv"          # timings in CSV format
+
+# If timing_csv does not include <id> then all tests will be
+# apppended into the same CSV file, which might be convenient.
+END
+    # report this to the user so they know where to find it
+    echo >&2 "New config file created at $conf_file"
+fi
+
+# source the config file
+source "$conf_file"
+
+#-- read script args -----------------------------------------------------------
+
+cluster="${1:-$cluster}"    # 1st arg is cluster name
+                            # defaults to name in config
+id="${2:-$time}"            # 2nd arg is test ID (prefix for logs)
+                            # defaults to the current date_time
+
+#-- replace <id> in filenames --------------------------------------------------
+
+control_log="${control_log//<id>/$id}"
+provision_log="${provision_log//<id>/$id}"
+ingress_log="${ingress_log//<id>/$id}"
+deploy_log="${deploy_log//<id>/$id}"
+timing_csv="${timing_csv//<id>/$id}"
+kube_conf="${kube_conf//<id>/$id}"
+
+#-- set additional vars --------------------------------------------------------
+
+namespace="clusters-$cluster"
+domain="$(get_domain)"
+cluster_domain="$cluster.$domain"
+
+#-- main testing and timing ----------------------------------------------------
+
+{   printf '%s\n' "$div $cluster $div"
+    SECONDS=0
+    create_cluster "$cluster" "$domain" "$image" "$pull_secret"
+    create_secs=$SECONDS
+    echo "create_secs=$create_secs"
+}   |& tee -a "$control_log"
+
+{   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
+    SECONDS=0
+    wait_provision "$cluster" "$domain" "$image" "$pull_secret"
+    provision_secs=$SECONDS
+    echo "provision_secs=$provision_secs"
+    SECONDS=0
+    wait_ready "$namespace" "1800"  # timeout 30 mins
+    worker_secs=$SECONDS
+    echo "worker_secs=$worker_secs"
+}   |& tee -a "$provision_log"
+
+{   printf '%s\n' "$div $cluster $div"
+    SECONDS=0
+    create_kubeconfig "$cluster" "$kube_conf"
+    config_secs=$SECONDS
+    echo "config_secs=$config_secs"
+    SECONDS=0
+    nodeport="$(wait_nodeport "$cluster" "$kube_conf" "30")"  # timeout 30 secs
+    nodeport_secs=$SECONDS
+    echo "nodeport_secs=$nodeport_secs"
+    printf '%s\n' "$cluster https nodeport: $nodeport"
+    SECONDS=0
+    create_ingress_service "$cluster" "$namespace" "$nodeport"
+    service_secs=$SECONDS
+    echo "service_secs=$service_secs"
+    SECONDS=0
+    create_ingress_route "$cluster" "$namespace" "$cluster_domain"
+    route_secs=$SECONDS
+    echo "route_secs=$route_secs"
+}   |& tee -a "$ingress_log"
+
+{   printf '%s\n' "$div $cluster $div"
+    cat <<END
+https nodeport: $nodeport
+kubevirt cluster name: $cluster
+kubevirt cluster namespace: $namespace
+kubevirt cluster base domain: $domain
+END
+    SECONDS=0
+    wait_available "$kube_conf" "600"   # timeout 10 mins
+    operator_secs=$SECONDS
+    echo "operator_secs=$operator_secs"
+    total_secs="$((EPOCHSECONDS-start_time))"
+    echo "total_secs=$total_secs"
+}   |& tee -a "$deploy_log"
+
+
+#-- write timing results to csv ------------------------------------------------
+
+csv_columns=(cluster create_secs provision_secs worker_secs config_secs
+            nodeport_secs service_secs route_secs total_secs)
+
+# if csv file doesn't exist, create it with a header line
+if [[ ! -e "$timing_csv" ]]; then
+    sed 's/ /","/g;s/.*/"&"/' <<<"${csv_columns[*]}" > "$timing_csv"
+fi
+
+# write out the field values, first one quoted, the rest not quoted
+{   for (( i=0; i<${#csv_columns[@]}; i++ )); do
+        declare -n val="${csv_columns[$i]}"
+        if ((i==0)); then
+            printf '"%s"' "$val"
+        else
+            printf ',%s' "$val"
+        fi
+    done
+    echo
+} >> "$timing_csv"
+
+echo "Finished"
+
