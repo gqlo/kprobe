@@ -48,23 +48,20 @@ wait_provision() {
     let timeout+=$EPOCHSECONDS
     while sleep 2; do
         oc get vms -n "$namespace" | grep -qF "$cluster" && break
-        ((EPOCHSECONDS>timeout)) \
-            && die "Timeout while waiting for provisioning of $cluster"
+        ((EPOCHSECONDS>timeout)) && die "Timeout while waiting for provisioning of $cluster"
     done
 }
 
 wait_ready() {
     local namespace="$1" timeout="$2"
-    oc wait --for "condition=Ready" --namespace "$namespace" \
-        vm --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
+    oc wait --for "condition=Ready" --namespace "$namespace" vm --all --timeout "${timeout}s"
 }
 
 wait_available() {
     local kube_conf="$1" timeout="$2"
-    oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" \
-        co --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
+    oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" co --all --timeout "${timeout}s"
 }
 
 create_kubeconfig() {
@@ -74,9 +71,7 @@ create_kubeconfig() {
 
 get_nodeport() {
     local cluster="$1" kube_conf="$2"
-    oc --kubeconfig "$kube_conf" get services \
-    -n openshift-ingress router-nodeport-default \
-    -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
+    oc --kubeconfig "$kube_conf" get services -n openshift-ingress router-nodeport-default -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
 }
 
 wait_nodeport() {
@@ -85,8 +80,7 @@ wait_nodeport() {
     while sleep 2; do
         local port="$(get_nodeport "$cluster" "$kube_conf")"
         [[ -n "$port" ]] && break
-        ((EPOCHSECONDS>timeout)) \
-            && die "Timeout while waiting for nodeport on $cluster"
+        ((EPOCHSECONDS>timeout)) && die "Timeout while waiting for nodeport on $cluster"
     done
     printf '%s\n' "$port"
 }
@@ -139,7 +133,6 @@ spec:
     weight: 100
 EOF
 }
-
 
 #-- configuration --------------------------------------------------------------
 
