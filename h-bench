@@ -45,23 +45,26 @@ create_cluster() {
 
 wait_provision() {
     local cluster="$1" namespace="$2" timeout="$3"
-    let timeout+=$EPOCHSECONDS
+    let "timeout+=$EPOCHSECONDS"
     while sleep 2; do
         oc get vms -n "$namespace" | grep -qF "$cluster" && break
-        ((EPOCHSECONDS>timeout)) && die "Timeout while waiting for provisioning of $cluster"
+        ((EPOCHSECONDS>timeout)) \
+            && die "Timeout while waiting for provisioning of $cluster"
     done
 }
 
 wait_ready() {
     local namespace="$1" timeout="$2"
+    oc wait --for "condition=Ready" --namespace "$namespace" \
+        vm --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
-    oc wait --for "condition=Ready" --namespace "$namespace" vm --all --timeout "${timeout}s"
 }
 
 wait_available() {
     local kube_conf="$1" timeout="$2"
+    oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" \
+        co --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
-    oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" co --all --timeout "${timeout}s"
 }
 
 create_kubeconfig() {
@@ -71,7 +74,9 @@ create_kubeconfig() {
 
 get_nodeport() {
     local cluster="$1" kube_conf="$2"
-    oc --kubeconfig "$kube_conf" get services -n openshift-ingress router-nodeport-default -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
+    oc --kubeconfig "$kube_conf" get services \
+    -n openshift-ingress router-nodeport-default \
+    -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
 }
 
 wait_nodeport() {
@@ -80,7 +85,8 @@ wait_nodeport() {
     while sleep 2; do
         local port="$(get_nodeport "$cluster" "$kube_conf")"
         [[ -n "$port" ]] && break
-        ((EPOCHSECONDS>timeout)) && die "Timeout while waiting for nodeport on $cluster"
+        ((EPOCHSECONDS>timeout)) \
+            && die "Timeout while waiting for nodeport on $cluster"
     done
     printf '%s\n' "$port"
 }
@@ -142,12 +148,12 @@ if [[ ! -e "$conf_file" ]]; then
 
 #edit this config file with care (normal bash syntax)
 
-cluster="TestCluster-$time"     # default cluster name ($time is date_time)
-dir=~/"hypershift"              # working directory containing other files
-pull_secret="$dir/pull-secret"  # file containing the hypershift secret key
+cluster="TestCluster"     # default cluster name ($time is date_time)
+dir=~/"work/hypershift-test"  # working directory containing other files
+pull_secret="$dir/pull-secret"  # file containing the pull secret key
 
 # Disk image to use
-image="quay.io/openshift-release-dev/ocp-release@sha256:a4e3391f3ff6e33211a91ccd446f2dc57075301e3b974023172b8b8f6aac5461"
+image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc9591865beb2e3baa5556432d23e8d57966a2dd18"
 
 # Filenames may contain <id> which inserts the test ID
 control_log="$dir/<id>_control.log"         # control plane output
@@ -171,7 +177,7 @@ source "$conf_file"
 
 cluster="${1:-$cluster}"    # 1st arg is cluster name
                             # defaults to name in config
-id="${2:-$time}"            # 2nd arg is test ID (prefix for logs)
+id="${1:-$time}"            # use cluster name as prefix for logs
                             # defaults to the current date_time
 
 #-- replace <id> in filenames --------------------------------------------------
@@ -180,8 +186,8 @@ control_log="${control_log//<id>/$id}"
 provision_log="${provision_log//<id>/$id}"
 ingress_log="${ingress_log//<id>/$id}"
 deploy_log="${deploy_log//<id>/$id}"
-timing_csv="${timing_csv//<id>/$id}"
 kube_conf="${kube_conf//<id>/$id}"
+timing_csv="${timing_csv//<id>/$id}"
 
 #-- set additional vars --------------------------------------------------------
 
@@ -196,18 +202,18 @@ cluster_domain="$cluster.$domain"
     create_cluster "$cluster" "$domain" "$image" "$pull_secret"
     create_secs=$SECONDS
     echo "create_secs=$create_secs"
-}   |& tee -a "$control_log"
+}   &> >(tee -a "$control_log")
 
 {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
     SECONDS=0
-    wait_provision "$cluster" "$domain" "$image" "$pull_secret"
+    wait_provision "$cluster" "$namespace" "600"
     provision_secs=$SECONDS
     echo "provision_secs=$provision_secs"
     SECONDS=0
     wait_ready "$namespace" "1800"  # timeout 30 mins
     worker_secs=$SECONDS
     echo "worker_secs=$worker_secs"
-}   |& tee -a "$provision_log"
+}   &> >(tee -a "$provision_log")
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
@@ -227,7 +233,7 @@ cluster_domain="$cluster.$domain"
     create_ingress_route "$cluster" "$namespace" "$cluster_domain"
     route_secs=$SECONDS
     echo "route_secs=$route_secs"
-}   |& tee -a "$ingress_log"
+}   &> >(tee -a "$ingress_log")
 
 {   printf '%s\n' "$div $cluster $div"
     cat <<END
@@ -242,7 +248,7 @@ END
     echo "operator_secs=$operator_secs"
     total_secs="$((EPOCHSECONDS-start_time))"
     echo "total_secs=$total_secs"
-}   |& tee -a "$deploy_log"
+}   &> >(tee -a "$deploy_log")
 
 
 #-- write timing results to csv ------------------------------------------------
