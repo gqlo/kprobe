@@ -45,7 +45,7 @@ create_cluster() {
 
 wait_provision() {
     local cluster="$1" namespace="$2" timeout="$3"
-    let "timeout+=$EPOCHSECONDS"
+    let timeout+=$EPOCHSECONDS
     while sleep 2; do
         oc get vms -n "$namespace" | grep -qF "$cluster" && break
         ((EPOCHSECONDS>timeout)) \
@@ -148,23 +148,19 @@ if [[ ! -e "$conf_file" ]]; then
 
 #edit this config file with care (normal bash syntax)
 
-cluster="TestCluster"     # default cluster name ($time is date_time)
-dir=~/"work/hypershift-test"  # working directory containing other files
-pull_secret="$dir/pull-secret"  # file containing the pull secret key
+cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
+dir=~/"work/hypershift-test"                            # working directory containing other files
+pull_secret="$dir/pull-secret"                          # file containing the pull secret key
 
-# Disk image to use
-image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc9591865beb2e3baa5556432d23e8d57966a2dd18"
 
-# Filenames may contain <id> which inserts the test ID
-control_log="$dir/<id>_control.log"         # control plane output
-provision_log="$dir/<id>_provision.log"     # provisioning phase output
-ingress_log="$dir/<id>_ingress.log"         # ingress phase output
-deploy_log="$dir/<id>_deployment.log"       # deployment phase output
-kube_conf="$dir/<id>_kubeconfig.conf"       # kubeconfig file
-timing_csv="$dir/<id>_timings.csv"          # timings in CSV format
+# list of log and csv files
+control_log="$dir/control.log"         # control plane output
+provision_log="$dir/provision.log"     # provisioning phase output
+ingress_log="$dir/ingress.log"         # ingress phase output
+deploy_log="$dir/deployment.log"       # deployment phase output
+kube_conf="$dir/kubeconfig.conf"       # kubeconfig file
+timing_csv="$dir/timings.csv"          # timings in CSV format
 
-# If timing_csv does not include <id> then all tests will be
-# apppended into the same CSV file, which might be convenient.
 END
     # report this to the user so they know where to find it
     echo >&2 "New config file created at $conf_file"
@@ -176,24 +172,13 @@ source "$conf_file"
 #-- read script args -----------------------------------------------------------
 
 cluster="${1:-$cluster}"    # 1st arg is cluster name
-                            # defaults to name in config
-id="${1:-$time}"            # use cluster name as prefix for logs
-                            # defaults to the current date_time
-
-#-- replace <id> in filenames --------------------------------------------------
-
-control_log="${control_log//<id>/$id}"
-provision_log="${provision_log//<id>/$id}"
-ingress_log="${ingress_log//<id>/$id}"
-deploy_log="${deploy_log//<id>/$id}"
-kube_conf="${kube_conf//<id>/$id}"
-timing_csv="${timing_csv//<id>/$id}"
 
 #-- set additional vars --------------------------------------------------------
 
 namespace="clusters-$cluster"
 domain="$(get_domain)"
 cluster_domain="$cluster.$domain"
+image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc9591865beb2e3baa5556432d23e8d57966a2dd18"
 
 #-- main testing and timing ----------------------------------------------------
 
