@@ -3,11 +3,91 @@
 # global constant
 OC_VERSION=$(oc version -o yaml | grep openshiftVersion | grep -o '[0-9]*[.][0-9]*' | head -1)
 
+#-- Local Storage Operator -----------------------------------------------------
+install_lso(){
+    oc create -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-local-storage
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: local-operator-group
+  namespace: openshift-local-storage
+spec:
+  targetNamespaces:
+    - openshift-local-storage
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: local-storage-operator
+  namespace: openshift-local-storage
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: local-storage-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+EOF
+
+# local volume filesystem mode
+create_local_volume_fs() {
+    oc create -f - <<EOF
+apiVersion: "local.storage.openshift.io/v1"
+kind: "LocalVolume"
+metadata:
+  name: "local-disks"
+  namespace: "openshift-local-storage"
+spec:
+  nodeSelector:
+    nodeSelectorTerms:
+    - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - worker011-1029p
+          - worker012-1029p
+          - worker013-1029p
+  storageClassDevices:
+    - storageClassName: "local-worker011-013"
+      volumeMode: Filesystem
+      fsType: xfs
+      devicePaths:
+        - /dev/nvme0n1
+EOF
+
+# local volume block mode
+create_local_volume_blk() {
+    oc create -f - <<EOF
+apiVersion: "local.storage.openshift.io/v1"
+kind: "LocalVolume"
+metadata:
+  name: "local-disks-odf-block"
+  namespace: "openshift-local-storage"
+spec:
+  nodeSelector:
+    nodeSelectorTerms:
+    - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - worker005-1029p
+          - worker006-1029p
+          - worker007-1029p
+  storageClassDevices:
+    - storageClassName: "odf-worker005-007"
+      volumeMode: Block
+      devicePaths:
+        - /dev/nvme0n1
+EOF
 #-- OpenShift Data Foundation --------------------------------------------------
 
 #-- OpenShift Virtualization ---------------------------------------------------
 
-# install cnv operator 
+# install cnv operator
 install_cnv() {
     oc create -f - <<EOF
 apiVersion: v1
@@ -33,7 +113,7 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   name: kubevirt-hyperconverged
-  startingCSV: kubevirt-hyperconverged-operator.v"$OC_VERSION"
+  startingCSV: kubevirt-hyperconverged-operator.v$OC_VERSION.0
   channel: "stable"
 EOF
 }
