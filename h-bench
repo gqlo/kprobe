@@ -34,12 +34,11 @@ create_cluster() {
     local cluster="$1" domain="$2" image="$3" pull_secret="$4"
     hypershift create cluster kubevirt \
         --name "$cluster" \
-        --base-domain "$domain" \
-        --node-pool-replicas 3 \
+        --node-pool-replicas 32 \
         --control-plane-availability-policy 'HighlyAvailable' \
         --node-selector "kubernetes.io/infra-virtualization=virt-components" \
-        --etcd-storage-class "local-worker011-013" \
-        --memory '8Gi' \
+        --etcd-storage-class "ocs-storagecluster-ceph-rbd" \
+        --memory '32Gi' \
         --cores '8' \
         --release-image "$image" \
         --pull-secret "$pull_secret"
@@ -151,7 +150,7 @@ if [[ ! -e "$conf_file" ]]; then
 #edit this config file with care (normal bash syntax)
 
 cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
-dir=~/"work/hypershift-test"                            # working directory containing other files
+dir=~/"work/hypershift"                            	# working directory containing other files
 pull_secret="$dir/pull-secret"                          # file containing the pull secret key
 
 
@@ -162,6 +161,7 @@ ingress_log="$dir/ingress.log"         # ingress phase output
 deploy_log="$dir/deployment.log"       # deployment phase output
 kube_conf="$dir/kubeconfig"            # kubeconfig file
 timing_csv="$dir/timings.csv"          # timings in CSV format
+time_stmp="$dir/stamp.log"	       # time stamps 
 
 END
     # report this to the user so they know where to find it
@@ -180,9 +180,11 @@ cluster="${1:-$cluster}"    # 1st arg is cluster name
 namespace="clusters-$cluster"
 domain="$(get_domain)"
 cluster_domain="$cluster.$domain"
-image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc9591865beb2e3baa5556432d23e8d57966a2dd18"
+image="quay.io/openshift-release-dev/ocp-release@sha256:28358de024c01a449b28f27fb4c122f15eb292a2becdf7c651511785c867884a"
 
 #-- main testing and timing ----------------------------------------------------
+
+echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp" 
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
@@ -193,7 +195,7 @@ image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc
 
 {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
     SECONDS=0
-    wait_provision "$cluster" "$namespace" "600"
+    wait_provision "$cluster" "$namespace" "1800"
     provision_secs=$SECONDS
     echo "provision_secs=$provision_secs"
     SECONDS=0
@@ -212,25 +214,13 @@ image="quay.io/openshift-release-dev/ocp-release@sha256:4c5a7e26d707780be6466ddc
     nodeport_secs=$SECONDS
     echo "nodeport_secs=$nodeport_secs"
     printf '%s\n' "$cluster https nodeport: $nodeport"
-    SECONDS=0
-    create_ingress_service "$cluster" "$namespace" "$nodeport"
-    service_secs=$SECONDS
-    echo "service_secs=$service_secs"
-    SECONDS=0
-    create_ingress_route "$cluster" "$namespace" "$cluster_domain"
-    route_secs=$SECONDS
-    echo "route_secs=$route_secs"
 }   &> >(tee -a "$ingress_log")
 
 {   printf '%s\n' "$div $cluster $div"
     cat <<END
-https nodeport: $nodeport
-kubevirt cluster name: $cluster
-kubevirt cluster namespace: $namespace
-kubevirt cluster base domain: $domain
 END
     SECONDS=0
-    wait_available "$kube_conf" "600"   # timeout 10 mins
+    wait_available "$kube_conf" "3600"   # timeout 10 mins
     operator_secs=$SECONDS
     echo "operator_secs=$operator_secs"
     total_secs="$(($(date +%s)-start_time))"
@@ -241,7 +231,7 @@ END
 #-- write timing results to csv ------------------------------------------------
 
 csv_columns=(cluster create_secs provision_secs worker_secs config_secs
-            nodeport_secs service_secs route_secs operator_secs total_secs)
+            nodeport_secs operator_secs total_secs)
 
 # if csv file doesn't exist, create it with a header line
 if [[ ! -e "$timing_csv" ]]; then
@@ -260,5 +250,5 @@ fi
     echo
 } >> "$timing_csv"
 
-echo "Finished"
+echo "Finished time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
