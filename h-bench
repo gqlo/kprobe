@@ -12,6 +12,9 @@ conf_file=~/".$prog.conf"                               # config file name
 start_time=$(date +%s)                                  # script start time
 time="$(date -d "@$start_time" '+%F_%T')"               # time string
 div="$(printf '=%.s' {1..40})"                          # divider line string
+param_string=""                                         # parameter string
+OC=$(command -v oc)                                     # check if oc cli exists
+HS=$(command -v hypershift)                             # check if hypershift cli exits
 
 #-- functions ------------------------------------------------------------------
 
@@ -25,23 +28,44 @@ die() {
 # none of the functions below use global vars
 # so all input is passed as arguments
 
+process_option() {
+    local line="$1"
+    param_string+="--$(echo "$line" | sed 's/=.*//') $(echo "$line" | sed 's/[^=]*=//') "
+}
+
+process_job_file() {
+    local jobfile="$1"
+    if [[ ! -f $jobfile || ! -r $jobfile ]]; then
+        die "Job file does not exists or cannot be read"
+    fi
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/ //g')
+        [[ -z "$line" ]] && continue
+        process_option "$line"
+    done < "$jobfile"
+}
+
 get_domain() {
     oc get ingresscontroller -n openshift-ingress-operator \
         default -o jsonpath='{.status.domain}'
 }
 
 create_cluster() {
-    local cluster="$1" domain="$2" image="$3" pull_secret="$4"
-    hypershift create cluster kubevirt \
-        --name "$cluster" \
-        --node-pool-replicas 32 \
-        --control-plane-availability-policy 'HighlyAvailable' \
-        --node-selector "kubernetes.io/infra-virtualization=virt-components" \
-        --etcd-storage-class "ocs-storagecluster-ceph-rbd" \
-        --memory '32Gi' \
-        --cores '8' \
-        --release-image "$image" \
-        --pull-secret "$pull_secret"
+    local pull_secret="$1"
+    hypershift create cluster kubevirt --pull-secret "$pull_secret" $param_string
+}
+
+destory_cluster() {
+    local cluster="$1"
+    if [[ ! -z "$HS" ]]; then
+        hypershift destroy cluster kubevirt --name "$cluster"
+    else
+        die "HyperShift cli is not installed"
+    fi
+
+    if [[ -f "$kube_conf" ]]; then
+        sudo rm $kube_conf
+    fi
 }
 
 wait_provision() {
@@ -71,6 +95,10 @@ wait_available() {
 create_kubeconfig() {
     local cluster="$1" kube_conf="$2"
     hypershift create kubeconfig --name="$cluster" > "$kube_conf"
+}
+
+destory_clsuter() {
+    local cluster="$1"
 }
 
 get_nodeport() {
@@ -150,18 +178,18 @@ if [[ ! -e "$conf_file" ]]; then
 #edit this config file with care (normal bash syntax)
 
 cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
-dir=~/"work/hypershift"                            	# working directory containing other files
-pull_secret="$dir/pull-secret"                          # file containing the pull secret key
-
+dir=~/"work/output"                             	# working directory containing output files
+dir_conf=~/"work/config"                                # config directory
+pull_secret="$dir_conf/pull-secret"                     # file containing the pull secret key
+kube_conf="$dir_conf/kubeconfig"                        # kubeconfig file
 
 # list of log and csv files
-control_log="$dir/control.log"         # control plane output
-provision_log="$dir/provision.log"     # provisioning phase output
-ingress_log="$dir/ingress.log"         # ingress phase output
-deploy_log="$dir/deployment.log"       # deployment phase output
-kube_conf="$dir/kubeconfig"            # kubeconfig file
-timing_csv="$dir/timings.csv"          # timings in CSV format
-time_stmp="$dir/stamp.log"	       # time stamps 
+control_log="$dir/control.log"                          # control plane output
+provision_log="$dir/provision.log"                      # provisioning phase output
+ingress_log="$dir/ingress.log"                          # ingress phase output
+deploy_log="$dir/deployment.log"                        # deployment phase output
+timing_csv="$dir/timings.csv"                           # timings in CSV format
+time_stmp="$dir/stamp.log"	                        # time stamps 
 
 END
     # report this to the user so they know where to find it
@@ -171,20 +199,23 @@ fi
 # source the config file
 source "$conf_file"
 
-#-- read script args -----------------------------------------------------------
+#-- Top Level -----------------------------------------------------------------
+while getopts "f:d:" opt; do
+    case "$opt" in
+        f) process_job_file "$OPTARG"               ;;
+        d) destory_cluster  "$OPTARG"               ;;
+        *)                                          ;;
+    esac
+done
 
-cluster="${1:-$cluster}"    # 1st arg is cluster name
+if [[ -z "$HS" ]]; then
+    die "hypershift cli is not installed"
+    exit 1
+else
+    create_cluster $pull_secret $param_string
+fi
 
-#-- set additional vars --------------------------------------------------------
-
-namespace="clusters-$cluster"
-domain="$(get_domain)"
-cluster_domain="$cluster.$domain"
-image="quay.io/openshift-release-dev/ocp-release@sha256:28358de024c01a449b28f27fb4c122f15eb292a2becdf7c651511785c867884a"
-
-#-- main testing and timing ----------------------------------------------------
-
-echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp" 
+echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0

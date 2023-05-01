@@ -1,0 +1,7 @@
+name=kv-w2
+node-pool-replicas=2
+node-selector=kubernetes.io/infra-virtualization=virt-components
+etcd-storage-class=ocs-storagecluster-ceph-rbd
+memory=16Gi
+cores=8
+release-image=quay.io/openshift-release-dev/ocp-release@sha256:28358de024c01a449b28f27fb4c122f15eb292a2becdf7c651511785c867884a
