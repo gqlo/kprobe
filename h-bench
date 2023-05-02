@@ -15,7 +15,7 @@ div="$(printf '=%.s' {1..40})"                          # divider line string
 param_string=""                                         # parameter string
 OC=$(command -v oc)                                     # check if oc cli exists
 HS=$(command -v hypershift)                             # check if hypershift cli exits
-
+declare -A PROM_METRIC=()                               # store metirc name and query
 #-- functions ------------------------------------------------------------------
 
 help_msg() {
@@ -29,6 +29,7 @@ Usage: [Options] [name]
     Options:
         -f  jobfile     Job file describe configurations of the guest cluster. Some examples
                         are included in the examples/ directory.
+        -c  name        Create guest cluster kubeconfig file at the config directory.
         -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
 EOF
 }
@@ -107,13 +108,9 @@ wait_available() {
     # need to figure out a way to know if it timed out or not
 }
 
-create_kubeconfig() {
+create_kubeconf() {
     local cluster="$1" kube_conf="$2"
     hypershift create kubeconfig --name="$cluster" > "$kube_conf"
-}
-
-destory_clsuter() {
-    local cluster="$1"
 }
 
 get_nodeport() {
@@ -133,6 +130,35 @@ wait_nodeport() {
             && die "Timeout while waiting for nodeport on $cluster"
     done
     printf '%s\n' "$port"
+}
+
+# inital version of metric profile parsing, not yet robust.
+parse_metric_profile() {
+    local metric_profile="$1"
+    if [[ ! -f $metric_profile || ! -r $metric_profile ]]; then
+        die "metric profile does not exits or can not be read"
+    fi
+    while IFS= read -r m_name; do
+        read -r m_query
+            m_name=$(echo $m_name | sed 's/://')
+            m_query=$(echo $m_query | sed 's/^ *- //g')
+            encoded_query=$(urlencode $m_query)
+            echo $m_name
+            echo $m_query
+            PROM_METRIC[$m_name]=$encoded_query
+    done < "$metric_profile"
+}
+
+# extract promethus raw metrics with given profile and timestamps
+prom_extract() {
+    local start="1682333803" end="1682333803" # placeholder, testing only
+    parse_metric_profile "$1"
+    for metric_name in "${!PROM_METRIC[@]}"; do
+        QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
+        oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
+        curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
+        | jq > "$metric_name".json
+    done
 }
 
 create_ingress_service() {
@@ -215,16 +241,19 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "f:d:h" opt; do
+while getopts "hf:c:d:p:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
+        c) create_kuconf    "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
+        p) prom_extract     "$OPTARG"               ;;
         *)                                          ;;
     esac
 done
 
 exit 0
+
 echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
 if [[ -z "$HS" ]]; then
@@ -252,7 +281,7 @@ fi
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
-    create_kubeconfig "$cluster" "$kube_conf"
+    create_kubeconf "$cluster" "$kube_conf"
     config_secs=$SECONDS
     echo "config_secs=$config_secs"
     SECONDS=0
