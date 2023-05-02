@@ -18,6 +18,21 @@ HS=$(command -v hypershift)                             # check if hypershift cl
 
 #-- functions ------------------------------------------------------------------
 
+help_msg() {
+cat <<EOF
+h-bench is a tool allow you to launch guest clusters within KubeVirt VMs at scale.
+
+Usage: [Options] [name]
+    Help:
+        -h              Print basic help information
+
+    Options:
+        -f  jobfile     Job file describe configurations of the guest cluster. Some examples
+                        are included in the examples/ directory.
+        -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
+EOF
+}
+
 # die fn takes an optional error message to display
 # if missing, the error message defaults to the usage string
 die() {
@@ -200,29 +215,29 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "f:d:" opt; do
+while getopts "f:d:h" opt; do
     case "$opt" in
+        h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         *)                                          ;;
     esac
 done
 
+exit 0
+echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+
 if [[ -z "$HS" ]]; then
     die "hypershift cli is not installed"
     exit 1
 else
-    create_cluster $pull_secret $param_string
-fi
-
-echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
-
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
-    create_cluster "$cluster" "$domain" "$image" "$pull_secret"
+    create_cluster "$pull_secret $param_string"
     create_secs=$SECONDS
     echo "create_secs=$create_secs"
 }   &> >(tee -a "$control_log")
+fi
 
 {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
     SECONDS=0
