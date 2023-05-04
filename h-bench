@@ -31,6 +31,8 @@ Usage: [Options] [name]
                         are included in the examples/ directory.
         -c  name        Create guest cluster kubeconfig file at the config directory.
         -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
+        -p  profile     Extract promethus raw metrics based on provided metric profile and save it as Json format.
+                        Examples are included in metric_profile/ dirctory.
 EOF
 }
 
@@ -151,7 +153,7 @@ parse_metric_profile() {
 
 # extract promethus raw metrics with given profile and timestamps
 prom_extract() {
-    local start="1682333803" end="1682333803" # placeholder, testing only
+    local start="1682333803" end="1682335521" # placeholder, testing only
     parse_metric_profile "$1"
     for metric_name in "${!PROM_METRIC[@]}"; do
         QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
