@@ -15,6 +15,7 @@ div="$(printf '=%.s' {1..40})"                          # divider line string
 param_string=""                                         # parameter string
 OC=$(command -v oc)                                     # check if oc cli exists
 HS=$(command -v hypershift)                             # check if hypershift cli exits
+URLENCODE=$(command -v urlencode)                       # check if urlencode exits
 declare -A PROM_METRIC=()                               # store metirc name and query
 #-- functions ------------------------------------------------------------------
 
@@ -111,8 +112,8 @@ wait_available() {
 }
 
 create_kubeconf() {
-    local cluster="$1" kube_conf="$2"
-    hypershift create kubeconfig --name="$cluster" > "$kube_conf"
+    local cluster="$1"
+    hypershift create kubeconfig --name="$cluster" > "$cluster"_kubeconfig
 }
 
 get_nodeport() {
@@ -134,24 +135,48 @@ wait_nodeport() {
     printf '%s\n' "$port"
 }
 
+write_provision_time_to_csv() {
+    # if csv file doesn't exist, create it with a header line
+    if [[ ! -e "$timing_csv" ]]; then
+        sed 's/ /","/g;s/.*/"&"/' <<<"${csv_columns[*]}" > "$timing_csv"
+    fi
+
+    # write out the field values, first one quoted, the rest not quoted
+    {   for (( i=0; i<${#csv_columns[@]}; i++ )); do
+            declare -n val="${csv_columns[$i]}"
+            if ((i==0)); then
+                printf '"%s"' "$val"
+            else
+                printf ',%s' "$val"
+            fi
+        done
+        echo
+    } >> "$timing_csv"
+
+}
+
 # inital version of metric profile parsing, not yet robust.
 parse_metric_profile() {
     local metric_profile="$1"
     if [[ ! -f $metric_profile || ! -r $metric_profile ]]; then
         die "metric profile does not exits or can not be read"
     fi
+
+    if [[ -z $URLENCODE ]]; then
+        die "urlencode cli does not exist"
+    fi
+
     while IFS= read -r m_name; do
         read -r m_query
             m_name=$(echo $m_name | sed 's/://')
             m_query=$(echo $m_query | sed 's/^ *- //g')
             encoded_query=$(urlencode $m_query)
-            echo $m_name
-            echo $m_query
             PROM_METRIC[$m_name]=$encoded_query
     done < "$metric_profile"
 }
 
-# extract promethus raw metrics with given profile and timestamps
+# extract promethus raw metrics with given profile and timestamps.
+# Use scrape interval as the steps to get all data points.
 prom_extract() {
     local start="1682333803" end="1682335521" # placeholder, testing only
     parse_metric_profile "$1"
@@ -247,7 +272,7 @@ while getopts "hf:c:d:p:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
-        c) create_kuconf    "$OPTARG"               ;;
+        c) create_kubeconf    "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
         *)                                          ;;
@@ -260,15 +285,14 @@ echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
 if [[ -z "$HS" ]]; then
     die "hypershift cli is not installed"
-    exit 1
-else
+fi
+
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
     create_cluster "$pull_secret $param_string"
     create_secs=$SECONDS
     echo "create_secs=$create_secs"
 }   &> >(tee -a "$control_log")
-fi
 
 {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
     SECONDS=0
@@ -309,23 +333,6 @@ END
 
 csv_columns=(cluster create_secs provision_secs worker_secs config_secs
             nodeport_secs operator_secs total_secs)
-
-# if csv file doesn't exist, create it with a header line
-if [[ ! -e "$timing_csv" ]]; then
-    sed 's/ /","/g;s/.*/"&"/' <<<"${csv_columns[*]}" > "$timing_csv"
-fi
-
-# write out the field values, first one quoted, the rest not quoted
-{   for (( i=0; i<${#csv_columns[@]}; i++ )); do
-        declare -n val="${csv_columns[$i]}"
-        if ((i==0)); then
-            printf '"%s"' "$val"
-        else
-            printf ',%s' "$val"
-        fi
-    done
-    echo
-} >> "$timing_csv"
 
 echo "Finished time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
