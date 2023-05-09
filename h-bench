@@ -8,7 +8,7 @@ set -Eeuo pipefail
 # some global constants
 prog="${0##*/}"                                         # program name
 usage="Usage: $prog [ <cluster_name> [ <test_id> ] ]"   # usage string
-conf_file=~/".$prog.conf"                               # config file name
+conf_file="./config/.$prog.conf"                               # config file name
 start_time=$(date +%s)                                  # script start time
 time="$(date -d "@$start_time" '+%F_%T')"               # time string
 div="$(printf '=%.s' {1..40})"                          # divider line string
@@ -17,6 +17,7 @@ OC=$(command -v oc)                                     # check if oc cli exists
 HS=$(command -v hypershift)                             # check if hypershift cli exits
 URLENCODE=$(command -v urlencode)                       # check if urlencode exits
 declare -A PROM_METRIC=()                               # store metirc name and query
+declare -A JOBS=()                                      # store job names start and end time stamps
 #-- functions ------------------------------------------------------------------
 
 help_msg() {
@@ -175,16 +176,49 @@ parse_metric_profile() {
     done < "$metric_profile"
 }
 
-# extract promethus raw metrics with given profile and timestamps.
+find_max() {
+    local arr="$1"
+    local max=0
+    for num in "${arr[@]}"; do
+        if (($num > $max)); then
+            max=$num
+        fi
+    done
+    echo $max
+}
+
+# offset_time_stamps finds the longest running job and extend the timestamps
+# of shorter runs in order to sample the same number of datapoints.
+offset_time_stamps() {
+    declare -a job_type
+    for job in "${!JOBS[@]}"; do
+        # also collect data points 20 mins after the run
+        m=${JOBS[$job]}
+        end_stamp=$(( ${m%%-*]} + $max + 1200 ))
+        JOBS[$job]=${JOBS[$job]/-*/-$end_stamp}
+        echo "$job: ${JOBS[$job]}"
+    done
+}
+# Extract promethus raw metrics with given profile and timestamps.
 # Use scrape interval as the steps to get all data points.
 prom_extract() {
-    local start="1682333803" end="1682335521" # placeholder, testing only
+    # The following time stamps are hardcoded for now since this function was created after
+    # those jobs. New functions will be added later to pass relvant parameters to prom_extract.
+    JOBS['light-odf']="1681977100-1681978919"
+    JOBS['heavy-odf']="1681995123-1681999661"
+    JOBS['light-lso']="1682333803-1682335521"
+    JOBS['heavy-lso']="1682346097-1682350386"
+    JOBS['heavy-mgt']="1682422052-1682423133"
     parse_metric_profile "$1"
-    for metric_name in "${!PROM_METRIC[@]}"; do
-        QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
-        oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
-        curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
-        | jq > "$metric_name".json
+    offset_time_stamps
+    for job in "${!JOBS[@]}"; do
+        for metric_name in "${!PROM_METRIC[@]}"; do
+            QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
+            oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
+            curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
+            | jq > "$dir_out/$metric_name-$job".json
+            echo finished extracting metrics: "$dir_out/$metric_name-$job".json
+        done
     done
 }
 
@@ -245,19 +279,20 @@ if [[ ! -e "$conf_file" ]]; then
 
 #edit this config file with care (normal bash syntax)
 
-cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
-dir=~/"work/output"                             	# working directory containing output files
-dir_conf=~/"work/config"                                # config directory
-pull_secret="$dir_conf/pull-secret"                     # file containing the pull secret key
-kube_conf="$dir_conf/kubeconfig"                        # kubeconfig file
+cluster=$(echo $RANDOM | md5sum | head -c 10)               # random string as default cluster name
+dir_out="./output"                                          # directory containing output files
+dir_conf="./config"                                         # config directory
+dir_log="./log"                                             # directory containing log files
+pull_secret="$dir_conf/pull-secret"                         # file containing the pull secret key
+kube_conf="$dir_conf/kubeconfig"                            # kubeconfig file
 
 # list of log and csv files
-control_log="$dir/control.log"                          # control plane output
-provision_log="$dir/provision.log"                      # provisioning phase output
-ingress_log="$dir/ingress.log"                          # ingress phase output
-deploy_log="$dir/deployment.log"                        # deployment phase output
-timing_csv="$dir/timings.csv"                           # timings in CSV format
-time_stmp="$dir/stamp.log"	                        # time stamps 
+control_log="$dir_log/control.log"                          # control plane output
+provision_log="$dir_log/provision.log"                      # provisioning phase output
+ingress_log="$dir_log/ingress.log"                          # ingress phase output
+deploy_log="$dir_log/deployment.log"                        # deployment phase output
+timing_csv="$dir_log/timings.csv"                           # timings in CSV format
+time_stmp="$dir_log/stamp.log"                              # time stamps
 
 END
     # report this to the user so they know where to find it
@@ -266,6 +301,14 @@ fi
 
 # source the config file
 source "$conf_file"
+
+# create dir if doesn't exsit
+for dir in "$dir_out $dir_conf $dir_log"
+do
+    if [[ ! -d $dir ]]; then
+        mkdir -p $dir
+    fi
+done
 
 #-- Top Level -----------------------------------------------------------------
 while getopts "hf:c:d:p:" opt; do
