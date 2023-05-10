@@ -156,6 +156,12 @@ write_provision_time_to_csv() {
 
 }
 
+kube_burner_run() {
+    if [[ ! -d "e2e-benchmarking" ]]; then
+        git clone https://github.com/cloud-bulldozer/e2e-benchmarking.git
+    fi
+
+}
 # inital version of metric profile parsing, not yet robust.
 parse_metric_profile() {
     local metric_profile="$1"
@@ -171,8 +177,8 @@ parse_metric_profile() {
         read -r m_query
             m_name=$(echo $m_name | sed 's/://')
             m_query=$(echo $m_query | sed 's/^ *- //g')
-            encoded_query=$(urlencode $m_query)
-            PROM_METRIC[$m_name]=$encoded_query
+            # encoded_query=$(urlencode $m_query)
+            PROM_METRIC[$m_name]=$m_query
     done < "$metric_profile"
 }
 
@@ -187,37 +193,39 @@ find_max() {
     echo $max
 }
 
-# offset_time_stamps finds the longest running job and extend the timestamps
-# of shorter runs in order to sample the same number of datapoints.
-offset_time_stamps() {
-    declare -a job_type
-    for job in "${!JOBS[@]}"; do
-        # also collect data points 20 mins after the run
-        m=${JOBS[$job]}
-        end_stamp=$(( ${m%%-*]} + $max + 1200 ))
-        JOBS[$job]=${JOBS[$job]/-*/-$end_stamp}
-        echo "$job: ${JOBS[$job]}"
-    done
+# read namespace kube-burner workload name from a text file
+read_timestamps() {
+    while IFS= read -r line; do
+        read -a stamps <<< "$line"
+        local key="${stamps[0]}":"${stamps[1]}"
+        if [[ "${!JOBS[@]}" =~ "$key" ]]; then
+            die "Seems like you have duplicated workdload runs"
+        fi
+        JOBS[$key]="${stamps[2]}"
+        echo "$key workload run time spent: $(( ${stamps[3]} - ${stamps[2]} ))"
+    done < "$burner_timestamp"
 }
+
 # Extract promethus raw metrics with given profile and timestamps.
 # Use scrape interval as the steps to get all data points.
 prom_extract() {
-    # The following time stamps are hardcoded for now since this function was created after
-    # those jobs. New functions will be added later to pass relvant parameters to prom_extract.
-    JOBS['light-odf']="1681977100-1681978919"
-    JOBS['heavy-odf']="1681995123-1681999661"
-    JOBS['light-lso']="1682333803-1682335521"
-    JOBS['heavy-lso']="1682346097-1682350386"
-    JOBS['heavy-mgt']="1682422052-1682423133"
     parse_metric_profile "$1"
-    offset_time_stamps
+    read_timestamps
     for job in "${!JOBS[@]}"; do
+        start="${JOBS[$job]}"
+        end=$(( ${JOBS[$job]} + 7200 ))
+        namespace="${job%%:*}"
+        kube_workload="${job##*:}"
         for metric_name in "${!PROM_METRIC[@]}"; do
             QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
+            if grep -q "filter" <<< "$QUERY_EXPRESSION"; then
+                QUERY_EXPRESSION=${QUERY_EXPRESSION/\$filter/"namespace=\"$namespace\""}
+            fi
+            QUERY_EXPRESSION=$(urlencode $QUERY_EXPRESSION)
             oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
             curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
-            | jq > "$dir_out/$metric_name-$job".json
-            echo finished extracting metrics: "$dir_out/$metric_name-$job".json
+            | jq > "$dir_out/$kube_workload-$namespace-$metric_name".json
+            echo finished extracting metrics: "$dir_out/$kube_workload-$namespace-$metric_name".json
         done
     done
 }
@@ -285,6 +293,7 @@ dir_conf="./config"                                         # config directory
 dir_log="./log"                                             # directory containing log files
 pull_secret="$dir_conf/pull-secret"                         # file containing the pull secret key
 kube_conf="$dir_conf/kubeconfig"                            # kubeconfig file
+burner_timestamp="$dir_out/burner-run.log"                 # kube-burner run timestamp log
 
 # list of log and csv files
 control_log="$dir_log/control.log"                          # control plane output
