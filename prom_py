@@ -42,15 +42,17 @@ def csv_write_row(path, row):
     except Exception as e:
         print(f"Error: '{e}' occured while writing data into '{path}'")
 
-# Assume promethus metric maintains a consistent structure as follows:
-# { "status": "success",
-#   "data": {"resultType": "xx",
-#            "result": [
-#                       {"metric": {meta_data}, "values": [[time_stamp,value]...]},
-#                       {"metric": {meta_data}, "values": [[time_stamp,value]...]}
-#                      ]
-#           }
-# }
+"""
+Assume promethus metric maintains a consistent structure as follows:
+{ "status": "success",
+  "data": {"resultType": "xx",
+           "result": [
+                      {"metric": {meta_data}, "values": [[time_stamp,value]...]},
+                      {"metric": {meta_data}, "values": [[time_stamp,value]...]}
+                     ]
+          }
+}
+"""
 def promjson_to_csv(dir_path):
     file_paths = read_json_files(dir_path)
     if len(file_paths) == 0:
@@ -61,7 +63,7 @@ def promjson_to_csv(dir_path):
         headers = []
         values  = []
         for item in result:
-            headers.append('-'.join(item['metric'].values()))
+            headers.append(item['metric']['pod'] + "-" + re.sub(r'^.*/([^/]+)\.\w+$', r'\1', file_path))
             values.append([value[1] for value in item['values']])
         # use zip to transpose lists to do column by column write
         csv_file_path=re.sub(r"\.json$", ".csv", file_path)
@@ -71,4 +73,4 @@ def promjson_to_csv(dir_path):
         print(f"Finished writting data into csv file at location: '{csv_file_path}'")
 
 if __name__ == '__main__':
-    res = promjson_to_csv("/home/guoqingli/work/h-bench")
+    res = promjson_to_csv("/home/guoqingli/work/h-bench/output")
