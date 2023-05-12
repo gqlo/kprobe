@@ -157,9 +157,14 @@ write_provision_time_to_csv() {
 }
 
 kube_burner_run() {
+    target_dir="e2e-benchmarking/workloads/kube-burner"
+
     if [[ ! -d "e2e-benchmarking" ]]; then
         git clone https://github.com/cloud-bulldozer/e2e-benchmarking.git
     fi
+    
+    cd $target_dir
+
 
 }
 # inital version of metric profile parsing, not yet robust.
