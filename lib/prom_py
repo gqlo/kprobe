@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+
+import os
+import re
+import csv
+import json
+import glob
+
+# Python scripts process promethus JSON raw metrics
+
+def is_dir(dir_path):
+    if not os.path.isdir(dir_path):
+        print(f"The directory '{dir_path}' does not exits")
+        return False
+    return True
+
+def is_file_readable(file_path):
+    if not os.access(file_path, os.R_OK):
+        print(f"The file at '{file_path}' is not readable")
+        return False
+    return True
+
+# read the path of json files with given directory
+def read_json_files(dir_path):
+    if is_dir(dir_path):
+        return glob.glob(f"{dir_path}/*.json")
+
+def read_json_file(file_path):
+    try:
+        with open(file_path, "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: file '{file_path}' does not exists")
+    except IOError:
+        print(f"Error: could not open file '{file_path}'")
+
+def csv_write_row(path, row):
+    try:
+        with open(path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(row)
+    except Exception as e:
+        print(f"Error: '{e}' occured while writing data into '{path}'")
+
+"""
+Assume promethus metric maintains a consistent structure as follows:
+{ "status": "success",
+  "data": {"resultType": "xx",
+           "result": [
+                      {"metric": {meta_data}, "values": [[time_stamp,value]...]},
+                      {"metric": {meta_data}, "values": [[time_stamp,value]...]}
+                     ]
+          }
+}
+"""
+def promjson_to_csv(dir_path):
+    file_paths = read_json_files(dir_path)
+    if len(file_paths) == 0:
+        print("No json file is found")
+        return
+    for file_path in file_paths:
+        result = read_json_file(file_path)['data']["result"]
+        headers = []
+        values  = []
+        for item in result:
+            headers.append(item['metric']['pod'] + "-" + re.sub(r'^.*/([^/]+)\.\w+$', r'\1', file_path))
+            values.append([value[1] for value in item['values']])
+        # use zip to transpose lists to do column by column write
+        csv_file_path=re.sub(r"\.json$", ".csv", file_path)
+        csv_write_row(csv_file_path, headers)
+        for row in zip(*values):
+            csv_write_row(csv_file_path, row)
+        print(f"Finished writting data into csv file at location: '{csv_file_path}'")
+
+if __name__ == '__main__':
+    res = promjson_to_csv("/home/guoqingli/work/h-bench/output")
