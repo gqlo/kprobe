@@ -67,6 +67,7 @@ process_job_file() {
         [[ -z "$line" ]] && continue
         process_option "$line"
     done < "$jobfile"
+    log_creation_phase
 }
 
 get_domain() {
@@ -89,7 +90,6 @@ destory_cluster() {
     if [[ -f "$kube_conf" ]]; then
         sudo rm $kube_conf
     fi
-    exit 0
 }
 
 wait_provision() {
@@ -157,20 +157,16 @@ write_provision_time_to_csv() {
         done
         echo
     } >> "$timing_csv"
-
 }
 
 kube_burner_run() {
     target_dir="e2e-benchmarking/workloads/kube-burner"
-
     if [[ ! -d "e2e-benchmarking" ]]; then
         git clone https://github.com/cloud-bulldozer/e2e-benchmarking.git
     fi
-
     cd $target_dir
-
-
 }
+
 # inital version of metric profile parsing, not yet robust.
 parse_metric_profile() {
     local metric_profile="$1"
@@ -239,6 +235,7 @@ prom_extract() {
     done
 }
 
+
 create_ingress_service() {
     local cluster="$1" namespace="$2" nodeport="$3"
     oc apply -f - <<EOF
@@ -288,6 +285,51 @@ spec:
 EOF
 }
 
+log_creation_phase() {
+    echo "Cluster=$cluster namespace=clusters-$cluster Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    {   printf '%s\n' "$div $cluster $div"
+        SECONDS=0
+        create_cluster "$param_string"
+        create_secs=$SECONDS
+        echo "create_secs=$create_secs"
+    }   &> >(tee -a "$control_log")
+
+    {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
+        SECONDS=0
+        wait_provision "3600"
+        provision_secs=$SECONDS
+        echo "provision_secs=$provision_secs"
+        SECONDS=0
+        wait_ready "3600"  # timeout 1 hour
+        worker_secs=$SECONDS
+        echo "worker_secs=$worker_secs"
+    }   &> >(tee -a "$provision_log")
+
+    {   printf '%s\n' "$div $cluster $div"
+        SECONDS=0
+        create_kubeconf "$cluster"
+        config_secs=$SECONDS
+        echo "config_secs=$config_secs"
+        SECONDS=0
+        nodeport="$(wait_nodeport "$cluster" "$kube_conf" "30")"  # timeout 30 secs
+        nodeport_secs=$SECONDS
+        echo "nodeport_secs=$nodeport_secs"
+        printf '%s\n' "$cluster https nodeport: $nodeport"
+    }   &> >(tee -a "$ingress_log")
+
+    {   printf '%s\n' "$div $cluster $div"
+        SECONDS=0
+        wait_available "$kube_conf" "3600"   # timeout 1 hour
+        operator_secs=$SECONDS
+        echo "operator_secs=$operator_secs"
+        total_secs="$(($(date +%s)-start_time))"
+        echo "total_secs=$total_secs"
+    }   &> >(tee -a "$deploy_log")
+    csv_columns=(cluster create_secs provision_secs worker_secs config_secs nodeport_secs operator_secs total_secs)
+    write_provision_time_to_csv
+    echo "Cluster=$cluster namespace=clusters-$cluster End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+}
+
 #-- configuration --------------------------------------------------------------
 # create a config file if none exists
 if [[ ! -e "$conf_file" ]]; then
@@ -318,7 +360,6 @@ fi
 # source the config file
 source "$conf_file"
 
-
 #-- Top Level -----------------------------------------------------------------
 while getopts "hf:c:d:p:" opt; do
     case "$opt" in
@@ -331,59 +372,6 @@ while getopts "hf:c:d:p:" opt; do
     esac
 done
 
-echo "Cluster=$cluster namespace=clusters-$cluster Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
-
 if [[ -z "$HS" ]]; then
     die "hypershift cli is not installed"
 fi
-
-{   printf '%s\n' "$div $cluster $div"
-    SECONDS=0
-    create_cluster "$param_string"
-    create_secs=$SECONDS
-    echo "create_secs=$create_secs"
-}   &> >(tee -a "$control_log")
-
-{   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
-    SECONDS=0
-    wait_provision "3600"
-    provision_secs=$SECONDS
-    echo "provision_secs=$provision_secs"
-    SECONDS=0
-    wait_ready "3600"  # timeout 1 hour
-    worker_secs=$SECONDS
-    echo "worker_secs=$worker_secs"
-}   &> >(tee -a "$provision_log")
-
-{   printf '%s\n' "$div $cluster $div"
-    SECONDS=0
-    create_kubeconf "$cluster"
-    config_secs=$SECONDS
-    echo "config_secs=$config_secs"
-    SECONDS=0
-    nodeport="$(wait_nodeport "$cluster" "$kube_conf" "30")"  # timeout 30 secs
-    nodeport_secs=$SECONDS
-    echo "nodeport_secs=$nodeport_secs"
-    printf '%s\n' "$cluster https nodeport: $nodeport"
-}   &> >(tee -a "$ingress_log")
-
-{   printf '%s\n' "$div $cluster $div"
-    cat <<END
-END
-    SECONDS=0
-    wait_available "$kube_conf" "3600"   # timeout 1 hour
-    operator_secs=$SECONDS
-    echo "operator_secs=$operator_secs"
-    total_secs="$(($(date +%s)-start_time))"
-    echo "total_secs=$total_secs"
-}   &> >(tee -a "$deploy_log")
-
-
-#-- write timing results to csv ------------------------------------------------
-
-csv_columns=(cluster create_secs provision_secs worker_secs config_secs
-            nodeport_secs operator_secs total_secs)
-
-write_provision_time_to_csv
-
-echo "Cluster=$cluster namespace=clusters-$cluster End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
