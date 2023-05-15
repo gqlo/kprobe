@@ -1,3 +1,4 @@
+pull-secret=/home/guoqingli/hypershift/config/pull-secret
 name=kv-w2
 node-pool-replicas=2
 node-selector=kubernetes.io/infra-virtualization=virt-components
