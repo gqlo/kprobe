@@ -6,9 +6,10 @@
 set -Eeuo pipefail
 
 # some global constants
+cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
 prog="${0##*/}"                                         # program name
 usage="Usage: $prog [ <cluster_name> [ <test_id> ] ]"   # usage string
-conf_file="./config/.$prog.conf"                               # config file name
+conf_file="$HOME/hypershift/config/.$prog.conf"         # config file name
 start_time=$(date +%s)                                  # script start time
 time="$(date -d "@$start_time" '+%F_%T')"               # time string
 div="$(printf '=%.s' {1..40})"                          # divider line string
@@ -60,6 +61,9 @@ process_job_file() {
     fi
     while IFS= read -r line; do
         line=$(echo "$line" | sed 's/ //g')
+        if [[ $line =~ ^name= ]]; then
+            cluster=${line##*=}
+        fi
         [[ -z "$line" ]] && continue
         process_option "$line"
     done < "$jobfile"
@@ -71,14 +75,13 @@ get_domain() {
 }
 
 create_cluster() {
-    local pull_secret="$1"
-    hypershift create cluster kubevirt --pull-secret "$pull_secret" $param_string
+    hypershift create cluster kubevirt $param_string
 }
 
 destory_cluster() {
-    local cluster="$1"
+    local name="$1"
     if [[ ! -z "$HS" ]]; then
-        hypershift destroy cluster kubevirt --name "$cluster"
+        hypershift destroy cluster kubevirt --name "$name"
     else
         die "HyperShift cli is not installed"
     fi
@@ -86,21 +89,22 @@ destory_cluster() {
     if [[ -f "$kube_conf" ]]; then
         sudo rm $kube_conf
     fi
+    exit 0
 }
 
 wait_provision() {
-    local cluster="$1" namespace="$2" timeout="$3"
+    local timeout="$1"
     let timeout+=$(date +%s)
     while sleep 2; do
-        oc get vms -n "$namespace" | grep -qF "$cluster" && break
+        oc get vms -n "clusters-$cluster" | grep -qF "$cluster" && break
         (($(date +%s)>timeout)) \
             && die "Timeout while waiting for provisioning of $cluster"
     done
 }
 
 wait_ready() {
-    local namespace="$1" timeout="$2"
-    oc wait --for "condition=Ready" --namespace "$namespace" \
+    local timeout="$1"
+    oc wait --for "condition=Ready" --namespace "clusters-$cluster" \
         vm --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
 }
@@ -113,8 +117,8 @@ wait_available() {
 }
 
 create_kubeconf() {
-    local cluster="$1"
-    hypershift create kubeconfig --name="$cluster" > "$cluster"_kubeconfig
+    local name="$1"
+    hypershift create kubeconfig --name="$name" > "$kube_conf"
 }
 
 get_nodeport() {
@@ -162,7 +166,7 @@ kube_burner_run() {
     if [[ ! -d "e2e-benchmarking" ]]; then
         git clone https://github.com/cloud-bulldozer/e2e-benchmarking.git
     fi
-    
+
     cd $target_dir
 
 
@@ -285,20 +289,18 @@ EOF
 }
 
 #-- configuration --------------------------------------------------------------
-
 # create a config file if none exists
 if [[ ! -e "$conf_file" ]]; then
     cat <<'END' > "$conf_file"
 
 #edit this config file with care (normal bash syntax)
 
-cluster=$(echo $RANDOM | md5sum | head -c 10)               # random string as default cluster name
-dir_out="./output"                                          # directory containing output files
-dir_conf="./config"                                         # config directory
-dir_log="./log"                                             # directory containing log files
+dir_out="$HOME/hypershift/output"                           # directory containing output files
+dir_conf="$HOME/hypershift/config"                          # config directory
+dir_log="$HOME/hypershift/log"                              # directory containing log files
 pull_secret="$dir_conf/pull-secret"                         # file containing the pull secret key
-kube_conf="$dir_conf/kubeconfig"                            # kubeconfig file
-burner_timestamp="$dir_out/burner-run.log"                 # kube-burner run timestamp log
+kube_conf="$dir_conf/$cluster-kubeconfig"                   # kubeconfig file
+burner_timestamp="$dir_out/burner-run.log"                  # kube-burner run timestamp log
 
 # list of log and csv files
 control_log="$dir_log/control.log"                          # control plane output
@@ -316,29 +318,20 @@ fi
 # source the config file
 source "$conf_file"
 
-# create dir if doesn't exsit
-for dir in "$dir_out $dir_conf $dir_log"
-do
-    if [[ ! -d $dir ]]; then
-        mkdir -p $dir
-    fi
-done
 
 #-- Top Level -----------------------------------------------------------------
 while getopts "hf:c:d:p:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
-        c) create_kubeconf    "$OPTARG"               ;;
+        c) create_kubeconf  "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
         *)                                          ;;
     esac
 done
 
-exit 0
-
-echo "Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+echo "Cluster=$cluster namespace=clusters-$cluster Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 
 if [[ -z "$HS" ]]; then
     die "hypershift cli is not installed"
@@ -346,25 +339,25 @@ fi
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
-    create_cluster "$pull_secret $param_string"
+    create_cluster "$param_string"
     create_secs=$SECONDS
     echo "create_secs=$create_secs"
 }   &> >(tee -a "$control_log")
 
 {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
     SECONDS=0
-    wait_provision "$cluster" "$namespace" "1800"
+    wait_provision "3600"
     provision_secs=$SECONDS
     echo "provision_secs=$provision_secs"
     SECONDS=0
-    wait_ready "$namespace" "1800"  # timeout 30 mins
+    wait_ready "3600"  # timeout 1 hour
     worker_secs=$SECONDS
     echo "worker_secs=$worker_secs"
 }   &> >(tee -a "$provision_log")
 
 {   printf '%s\n' "$div $cluster $div"
     SECONDS=0
-    create_kubeconf "$cluster" "$kube_conf"
+    create_kubeconf "$cluster"
     config_secs=$SECONDS
     echo "config_secs=$config_secs"
     SECONDS=0
@@ -378,7 +371,7 @@ fi
     cat <<END
 END
     SECONDS=0
-    wait_available "$kube_conf" "3600"   # timeout 10 mins
+    wait_available "$kube_conf" "3600"   # timeout 1 hour
     operator_secs=$SECONDS
     echo "operator_secs=$operator_secs"
     total_secs="$(($(date +%s)-start_time))"
@@ -391,5 +384,6 @@ END
 csv_columns=(cluster create_secs provision_secs worker_secs config_secs
             nodeport_secs operator_secs total_secs)
 
-echo "Finished time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+write_provision_time_to_csv
 
+echo "Cluster=$cluster namespace=clusters-$cluster End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
