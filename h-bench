@@ -48,7 +48,6 @@ die() {
 
 # none of the functions below use global vars
 # so all input is passed as arguments
-
 process_option() {
     local line="$1"
     param_string+="--$(echo "$line" | sed 's/=.*//') $(echo "$line" | sed 's/[^=]*=//') "
@@ -67,6 +66,9 @@ process_job_file() {
         [[ -z "$line" ]] && continue
         process_option "$line"
     done < "$jobfile"
+    if [[ ! $param_string =~ "--name" ]]; then
+        param_string+="--name $cluster"
+    fi
     log_creation_phase
 }
 
@@ -86,7 +88,6 @@ destory_cluster() {
     else
         die "HyperShift cli is not installed"
     fi
-
     if [[ -f "$kube_conf" ]]; then
         sudo rm $kube_conf
     fi
@@ -235,7 +236,6 @@ prom_extract() {
     done
 }
 
-
 create_ingress_service() {
     local cluster="$1" namespace="$2" nodeport="$3"
     oc apply -f - <<EOF
@@ -368,7 +368,7 @@ while getopts "hf:c:d:p:" opt; do
         c) create_kubeconf  "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
-        *)                                          ;;
+        *) die "invalid options"                    ;;
     esac
 done
 
