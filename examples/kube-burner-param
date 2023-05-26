@@ -1,0 +1,5 @@
+KUBEVIRT_CLUSTER_NAME=kv-w32-nvme-lso
+WORKLOAD=node-density-heavy
+INDEXING=false
+JOB_ITERATIONS=500
+
