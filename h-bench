@@ -3,10 +3,9 @@
 # helper script to launch kubevirt guest clusters
 
 # set scrict mode
-set -Eeuo pipefail
-
+# set -Eeuo pipefail
 # some global constants
-cluster=$(echo $RANDOM | md5sum | head -c 10)           # random string as default cluster name
+cluster_name=$(echo $RANDOM | md5sum | head -c 10)      # random string as default cluster name
 prog="${0##*/}"                                         # program name
 usage="Usage: $prog [ <cluster_name> [ <test_id> ] ]"   # usage string
 conf_file="$HOME/hypershift/config/.$prog.conf"         # config file name
@@ -19,8 +18,10 @@ HS=$(command -v hypershift)                             # check if hypershift cl
 URLENCODE=$(command -v urlencode)                       # check if urlencode exits
 declare -A PROM_METRIC=()                               # store metirc name and query
 declare -A JOBS=()                                      # store job names start and end time stamps
-#-- functions ------------------------------------------------------------------
+declare -i CLUSTER_NUM=1                                # number of hosted cluster to be created
+PARALLEL=false                                          # determine if it's a parallel cluster creation
 
+#-- functions ------------------------------------------------------------------
 help_msg() {
 cat <<EOF
 h-bench is a tool allow you to launch guest clusters within KubeVirt VMs at scale.
@@ -34,8 +35,11 @@ Usage: [Options] [name]
                         are included in the examples/ directory.
         -c  name        Create guest cluster kubeconfig file at the config directory.
         -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
-        -p  profile     Extract promethus raw metrics based on provided metric profile and save it as Json format.
-                        Examples are included in metric_profile/ dirctory.
+        -p  profile     Extract promethus raw metrics based on provided metric profile and save it as
+                        Json format. Examples are included in metric_profile/ dirctory.
+        -P  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
+                        deafult to: $PARALLEL.
+        -N  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
 EOF
 }
 
@@ -61,24 +65,61 @@ process_job_file() {
     while IFS= read -r line; do
         line=$(echo "$line" | sed 's/ //g')
         if [[ $line =~ ^name= ]]; then
-            cluster=${line##*=}
+            cluster_name=${line##*=}
         fi
         [[ -z "$line" ]] && continue
         process_option "$line"
     done < "$jobfile"
+    create_multi_clusters 
+}
+
+create_cluster() {
+    local cluster_param="$1"
+    echo "Cluster=$cluster_name namespace=clusters-$cluster_name Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    {   printf '%s\n' "$div $cluster_name $div"
+        SECONDS=0
+        echo "param within cc $cluster_param"
+    	hypershift create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
+        create_secs=$SECONDS
+        echo "create_secs=$create_secs"
+    }   &> >(tee -a "$control_log") 
+    #log_creation_phase
+    #csv_columns=(cluster create_secs provision_secs worker_secs config_secs nodeport_secs operator_secs total_secs)
+    #write_provision_time_to_csv
+    echo "Cluster=$cluster_name namespace=clusters-$cluster_name End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+}
+
+# regx matches zero or more spaces followed by "--name"
+# one or more spaces and one more more characters except space
+# append the first capture group with "-$i"
+# use double quotes to allow variable expansion.
+create_multi_clusters() {
     if [[ ! $param_string =~ "--name" ]]; then
-        param_string+="--name $cluster"
+        param_string+="--name $cluster_name"
     fi
-    log_creation_phase
+    echo "CLUSTER_NUM $CLUSTER_NUM"
+    if [[ $PARALLEL == true ]]; then
+       for ((n=1; n<=$CLUSTER_NUM; n++)); do
+        {
+    	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
+            cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+	    echo "Parallel: $cluster_param"
+	    create_cluster "$cluster_param"
+        } &
+       done
+    else
+       for ((i=1; i<=$CLUSTER_NUM; i++)); do
+    	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
+            cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+	    echo "Seq within cmc: $cluster_param"
+	    create_cluster "$cluster_param"
+       done
+    fi
 }
 
 get_domain() {
     oc get ingresscontroller -n openshift-ingress-operator \
         default -o jsonpath='{.status.domain}'
-}
-
-create_cluster() {
-    hypershift create cluster kubevirt $param_string
 }
 
 destory_cluster() {
@@ -96,16 +137,16 @@ destory_cluster() {
 wait_provision() {
     local timeout="$1"
     let timeout+=$(date +%s)
-    while sleep 2; do
-        oc get vms -n "clusters-$cluster" | grep -qF "$cluster" && break
+    while sleep 5; do
+        oc get vms -n "clusters-$cluster_name" | grep -qF "$cluster_name" && break
         (($(date +%s)>timeout)) \
-            && die "Timeout while waiting for provisioning of $cluster"
+            && die "Timeout while waiting for provisioning of $cluster_name"
     done
 }
 
 wait_ready() {
     local timeout="$1"
-    oc wait --for "condition=Ready" --namespace "clusters-$cluster" \
+    oc wait --for "condition=Ready" --namespace "clusters-$cluster_name" \
         vm --all --timeout "${timeout}s"
     # need to figure out a way to know if it timed out or not
 }
@@ -286,15 +327,7 @@ EOF
 }
 
 log_creation_phase() {
-    echo "Cluster=$cluster namespace=clusters-$cluster Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
-    {   printf '%s\n' "$div $cluster $div"
-        SECONDS=0
-        create_cluster "$param_string"
-        create_secs=$SECONDS
-        echo "create_secs=$create_secs"
-    }   &> >(tee -a "$control_log")
-
-    {   printf '%s\n' "$div $cluster $div" "Waiting to provision $cluster"
+    {   printf '%s\n' "$div $cluster_name $div" "Waiting to provision $cluster_name"
         SECONDS=0
         wait_provision "3600"
         provision_secs=$SECONDS
@@ -305,19 +338,19 @@ log_creation_phase() {
         echo "worker_secs=$worker_secs"
     }   &> >(tee -a "$provision_log")
 
-    {   printf '%s\n' "$div $cluster $div"
+    {   printf '%s\n' "$div $cluster_name $div"
         SECONDS=0
-        create_kubeconf "$cluster"
+        create_kubeconf "$cluster_name"
         config_secs=$SECONDS
         echo "config_secs=$config_secs"
         SECONDS=0
-        nodeport="$(wait_nodeport "$cluster" "$kube_conf" "30")"  # timeout 30 secs
+        nodeport="$(wait_nodeport "$cluster_name" "$kube_conf" "30")"  # timeout 30 secs
         nodeport_secs=$SECONDS
         echo "nodeport_secs=$nodeport_secs"
-        printf '%s\n' "$cluster https nodeport: $nodeport"
+        printf '%s\n' "$cluster_name https nodeport: $nodeport"
     }   &> >(tee -a "$ingress_log")
 
-    {   printf '%s\n' "$div $cluster $div"
+    {   printf '%s\n' "$div $cluster_name $div"
         SECONDS=0
         wait_available "$kube_conf" "3600"   # timeout 1 hour
         operator_secs=$SECONDS
@@ -325,9 +358,6 @@ log_creation_phase() {
         total_secs="$(($(date +%s)-start_time))"
         echo "total_secs=$total_secs"
     }   &> >(tee -a "$deploy_log")
-    csv_columns=(cluster create_secs provision_secs worker_secs config_secs nodeport_secs operator_secs total_secs)
-    write_provision_time_to_csv
-    echo "Cluster=$cluster namespace=clusters-$cluster End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 }
 
 #-- configuration --------------------------------------------------------------
@@ -341,7 +371,7 @@ dir_out="$HOME/hypershift/output"                           # directory containi
 dir_conf="$HOME/hypershift/config"                          # config directory
 dir_log="$HOME/hypershift/log"                              # directory containing log files
 pull_secret="$dir_conf/pull-secret"                         # file containing the pull secret key
-kube_conf="$dir_conf/$cluster-kubeconfig"                   # kubeconfig file
+kube_conf="$dir_conf/$cluster_name-kubeconfig"              # kubeconfig file
 burner_timestamp="$dir_out/burner-run.log"                  # kube-burner run timestamp log
 
 # list of log and csv files
@@ -361,10 +391,12 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "hf:c:d:p:" opt; do
+while getopts "hf:ln:c:d:p:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
+        l) PARALLEL=true                            ;;
+        n) CLUSTER_NUM="$OPTARG"                    ;;
         c) create_kubeconf  "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
