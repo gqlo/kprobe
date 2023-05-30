@@ -37,9 +37,9 @@ Usage: [Options] [name]
         -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
         -p  profile     Extract promethus raw metrics based on provided metric profile and save it as
                         Json format. Examples are included in metric_profile/ dirctory.
-        -P  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
+        -l  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
                         deafult to: $PARALLEL.
-        -N  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
+        -n  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
 EOF
 }
 
@@ -83,9 +83,9 @@ create_cluster() {
         create_secs=$SECONDS
         echo "create_secs=$create_secs"
     }   &> >(tee -a "$control_log") 
-    #log_creation_phase
-    #csv_columns=(cluster create_secs provision_secs worker_secs config_secs nodeport_secs operator_secs total_secs)
-    #write_provision_time_to_csv
+    # log_creation_phase
+    # csv_columns=(cluster_name create_secs provision_secs worker_secs config_secs nodeport_secs operator_secs total_secs)
+    # write_provision_time_to_csv
     echo "Cluster=$cluster_name namespace=clusters-$cluster_name End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 }
 
@@ -99,6 +99,7 @@ create_multi_clusters() {
     fi
     echo "CLUSTER_NUM $CLUSTER_NUM"
     if [[ $PARALLEL == true ]]; then
+    (
        for ((n=1; n<=$CLUSTER_NUM; n++)); do
         {
     	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
@@ -107,13 +108,16 @@ create_multi_clusters() {
 	    create_cluster "$cluster_param"
         } &
        done
+    )
     else
+    (
        for ((i=1; i<=$CLUSTER_NUM; i++)); do
     	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
 	    echo "Seq within cmc: $cluster_param"
 	    create_cluster "$cluster_param"
        done
+    )
     fi
 }
 
@@ -140,7 +144,7 @@ wait_provision() {
     while sleep 5; do
         oc get vms -n "clusters-$cluster_name" | grep -qF "$cluster_name" && break
         (($(date +%s)>timeout)) \
-            && die "Timeout while waiting for provisioning of $cluster_name"
+           && die "Timeout while waiting for provisioning of $cluster_name"
     done
 }
 
