@@ -128,13 +128,19 @@ get_domain() {
 
 destory_cluster() {
     local name="$1"
-    if [[ ! -z "$HS" ]]; then
-        hypershift destroy cluster kubevirt --name "$name"
-    else
+    if [[ -z "$HS" ]]; then
         die "HyperShift cli is not installed"
     fi
-    if [[ -f "$kube_conf" ]]; then
-        sudo rm $kube_conf
+    if [[ "$1" == "--all" ]]; then
+        for cluster in $(oc get hc -A | awk  'NR>1 {print $2}'); do
+        {
+            hypershift destroy cluster kubevirt --name "$cluster"
+            [[ -f "$kube_conf" ]] && sudo rm $kube_conf
+        } &
+        done
+    else
+        hypershift destroy cluster kubevirt --name "$name"
+        [[ -f "$kube_conf" ]] && sudo rm $kube_conf
     fi
 }
 
