@@ -170,7 +170,7 @@ wait_available() {
 
 create_kubeconf() {
     local name="$1"
-    hypershift create kubeconfig --name="$name" > "$kube_conf"
+    hypershift create kubeconfig --name="$name" > "$kube_conf/$name-kubeconfig"
 }
 
 get_nodeport() {
@@ -381,7 +381,7 @@ dir_out="$HOME/hypershift/output"                           # directory containi
 dir_conf="$HOME/hypershift/config"                          # config directory
 dir_log="$HOME/hypershift/log"                              # directory containing log files
 pull_secret="$dir_conf/pull-secret"                         # file containing the pull secret key
-kube_conf="$dir_conf/$cluster_name-kubeconfig"              # kubeconfig file
+kube_conf="$dir_conf"                                       # kubeconfig file
 burner_timestamp="$dir_out/burner-run.log"                  # kube-burner run timestamp log
 
 # list of log and csv files
