@@ -96,8 +96,6 @@ create_cluster() {
 # append the first capture group with "-$i"
 # use double quotes to allow variable expansion.
 create_multi_clusters() {
-    local cluster_param=""
-    local cluster_name="" 
     local n=1 
     local i=1
     if [[ ! $param_string =~ "--name" ]]; then
@@ -107,16 +105,17 @@ create_multi_clusters() {
     if [[ $PARALLEL == true ]]; then
        for ((n=1; n<=CLUSTER_NUM; n++)); do
         {
-    	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
-            cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+    	    local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
+            local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
 	    echo "Parallel: $cluster_param"
 	    create_cluster "$cluster_param" "$cluster_name"
         } &
        done
     else
        for ((i=1; i<=CLUSTER_NUM; i++)); do
-    	    cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
-            cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+    	    local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
+            local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+            echo "seq creation: $cluster_param $cluster_name"
 	    create_cluster "$cluster_param" "$cluster_name"
        done
     fi
@@ -200,9 +199,10 @@ wait_nodeport() {
 
 write_provision_time_to_csv() {
     local i=0
+    local header=("name" "create_secs" "provision_secs" "worker_secs" "config_secs" "nodeport_secs" "operator_secs" "total_secs")
     # if csv file doesn't exist, create it with a header line
     if [[ ! -e "$timing_csv" ]]; then
-        sed 's/ /","/g;s/.*/"&"/' <<<"${timing_phase[*]}" > "$timing_csv"
+        sed 's/ /","/g;s/.*/"&"/' <<<"${header[*]}" > "$timing_csv"
     fi
 
     # write out the field values, first one quoted, the rest not quoted
@@ -227,8 +227,6 @@ kube_burner_run() {
 
 # inital version of metric profile parsing, not yet robust.
 parse_metric_profile() {
-    local n_name=""
-    local m_query=""
     local metric_profile="$1"
     if [[ ! -f $metric_profile || ! -r $metric_profile ]]; then
         die "metric profile does not exits or can not be read"
@@ -240,8 +238,8 @@ parse_metric_profile() {
 
     while IFS= read -r m_name; do
         read -r m_query
-            m_name=$(echo $m_name | sed 's/://')
-            m_query=$(echo $m_query | sed 's/^ *- //g')
+            local m_name=$(echo $m_name | sed 's/://')
+            local m_query=$(echo $m_query | sed 's/^ *- //g')
             # encoded_query=$(urlencode $m_query)
             PROM_METRIC[$m_name]=$m_query
     done < "$metric_profile"
