@@ -77,7 +77,7 @@ process_job_file() {
 create_cluster() {
     local cluster_param="$1"
     local cluster="$2"
-    echo "Cluster=$cluster namespace=clusters-$cluster Start time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    local start_time=$(date +%s; date +'%Y-%m-%d %T')
     {
         printf '%s\n' "$div $cluster $div"
         SECONDS=0
@@ -88,7 +88,7 @@ create_cluster() {
     log_creation_phase $cluster
     timing_phase=(${timing_phase[@]:0:1} $create_secs ${timing_phase[@]:1})
     write_provision_time_to_csv
-    echo "Cluster=$cluster namespace=clusters-$cluster End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    echo "Cluster=$cluster namespace=clusters-$cluster Start time: "$start_time" End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
 }
 
 # regx matches zero or more spaces followed by "--name"
@@ -96,7 +96,7 @@ create_cluster() {
 # append the first capture group with "-$i"
 # use double quotes to allow variable expansion.
 create_multi_clusters() {
-    local n=1 
+    local n=1
     local i=1
     if [[ ! $param_string =~ "--name" ]]; then
         param_string+="--name $cluster_name"
@@ -145,7 +145,7 @@ destory_cluster() {
 }
 
 wait_provision() {
-    local timeout="$1" 
+    local timeout="$1"
     local cluster="$2"
     let timeout+=$(date +%s)
     while sleep 5; do
@@ -156,7 +156,7 @@ wait_provision() {
 }
 
 wait_ready() {
-    local timeout="$1" 
+    local timeout="$1"
     local cluster="$2"
     oc wait --for "condition=Ready" --namespace "clusters-$cluster" \
         vm --all --timeout "${timeout}s"
@@ -164,7 +164,7 @@ wait_ready() {
 }
 
 wait_available() {
-    local kube_conf="$1" 
+    local kube_conf="$1"
     local timeout="$2"
     oc wait --for "condition=Available=True" --kubeconfig "$kube_conf" \
         co --all --timeout "${timeout}s"
@@ -184,8 +184,8 @@ get_nodeport() {
 }
 
 wait_nodeport() {
-    local cluster="$1" 
-    local kube_conf="$2" 
+    local cluster="$1"
+    local kube_conf="$2"
     local timeout="$3"
     let timeout+=$(date +%s)
     while sleep 2; do
@@ -296,8 +296,8 @@ prom_extract() {
 }
 
 create_ingress_service() {
-    local cluster="$1" 
-    local namespace="$2" 
+    local cluster="$1"
+    local namespace="$2"
     local nodeport="$3"
     oc apply -f - <<EOF
 apiVersion: v1
@@ -325,8 +325,8 @@ EOF
 }
 
 create_ingress_route() {
-    local cluster="$1" 
-    local namespace="$2" 
+    local cluster="$1"
+    local namespace="$2"
     local cluster_domain="$3"
     oc apply -f - <<EOF
 apiVersion: route.openshift.io/v1
