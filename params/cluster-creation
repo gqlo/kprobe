@@ -1,0 +1,2 @@
+PARALLEL=true
+CLUSTER_NUM=2
