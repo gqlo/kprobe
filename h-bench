@@ -117,8 +117,8 @@ create_multi_clusters() {
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
 	    create_cluster "$cluster_param" "$cluster_name"
-            sleep 30
             kube_burner_run "$cluster_name"
+            sleep 600 # wait 10 mins before lauching another cluster
        done
     fi
 }
@@ -219,6 +219,10 @@ write_provision_time_to_csv() {
     } >> "$timing_csv"
 }
 
+# integrate kube-burner tool
+# use subshell to run workload to avoid environment variable clashing
+# $burner_timestamp is used for python post-processing
+# verbose log is saved in $burner_run_log
 kube_burner_run() {
     local cluster_name="$1"
     local WORKLOAD="cluster-density"
@@ -237,7 +241,7 @@ kube_burner_run() {
         (export KUBECONFIG="$dir_conf/$cluster_name"
         echo "Running kube-burner $WORKLOAD workload against the following nodes"
         oc get nodes | head
-        cd "$target_dir" && JOB_ITERATIONS=10 INDEXING=false WORKLOAD="$WORKLOAD" ./run.sh)
+        cd "$target_dir" && JOB_ITERATIONS=500 INDEXING=false WORKLOAD="$WORKLOAD" ./run.sh)
         local end_time=$(date +%s)
         echo "Cluster=$cluster_name namespace=clusters-$cluster_name Start time: $start_time $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $end_time  $(date -d "@$end_time" +"%Y-%m-%d %T")"
     }   &> >(tee -a "$burner_run_log")
