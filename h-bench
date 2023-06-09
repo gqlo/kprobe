@@ -77,7 +77,7 @@ process_job_file() {
 create_cluster() {
     local cluster_param="$1"
     local cluster="$2"
-    local start_time=$(date +%s; date +'%Y-%m-%d %T')
+    local start_time=$(date +%s)
     {
         printf '%s\n' "$div $cluster $div"
         SECONDS=0
@@ -88,7 +88,8 @@ create_cluster() {
     log_creation_phase $cluster
     timing_phase=(${timing_phase[@]:0:1} $create_secs ${timing_phase[@]:1})
     write_provision_time_to_csv
-    echo "Cluster=$cluster namespace=clusters-$cluster Start time: "$start_time" End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    echo "Cluster=$cluster namespace=clusters-$cluster Start time: "$start_time" $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
+    echo "clusters-$cluster_name cluster-creation $start_time $(date +%s)" | tee -a "$burner_timestamp"
 }
 
 # regx matches zero or more spaces followed by "--name"
