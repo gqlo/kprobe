@@ -284,6 +284,7 @@ find_max() {
 read_timestamps() {
     local line=""
     while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
         read -a stamps <<< "$line"
         local key="${stamps[0]}":"${stamps[1]}"
         if [[ "${!JOBS[@]}" =~ "$key" ]]; then
