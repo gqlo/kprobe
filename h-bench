@@ -226,9 +226,10 @@ write_provision_time_to_csv() {
 # verbose log is saved in $burner_run_log
 kube_burner_run() {
     local cluster_name="$1"
-    local WORKLOAD="cluster-density"
+    local WORKLOAD="cluster-density-v2"
+    local ITERATIONS=500
     local start_time=$(date +%s)
-    local target_dir="$(pwd)"/"e2e-benchmarking/workloads/kube-burner"
+    local target_dir="$(pwd)"/"e2e-benchmarking/workloads/kube-burner-ocp-wrapper"
     if [[ ! -d "e2e-benchmarking" ]]; then
         git clone https://github.com/cloud-bulldozer/e2e-benchmarking.git
     fi
@@ -242,7 +243,7 @@ kube_burner_run() {
         (export KUBECONFIG="$dir_conf/$cluster_name"
         echo "Running kube-burner $WORKLOAD workload against the following nodes"
         oc get nodes | head
-        cd "$target_dir" && JOB_ITERATIONS=500 INDEXING=false WORKLOAD="$WORKLOAD" ./run.sh)
+        cd "$target_dir" && ITERATIONS="$ITERATIONS" INDEXING=false WORKLOAD="$WORKLOAD" ./run.sh)
         local end_time=$(date +%s)
         echo "Cluster=$cluster_name namespace=clusters-$cluster_name Start time: $start_time $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $end_time  $(date -d "@$end_time" +"%Y-%m-%d %T")"
     }   &> >(tee -a "$burner_run_log")
