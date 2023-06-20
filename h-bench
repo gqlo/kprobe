@@ -87,6 +87,7 @@ create_cluster() {
     } &> >(tee -a "$control_log")
     log_creation_phase $cluster
     timing_phase=(${timing_phase[@]:0:1} $create_secs ${timing_phase[@]:1})
+    echo "timing phase, ${timing_phase[@]}"
     write_provision_time_to_csv
     echo "Cluster=$cluster namespace=clusters-$cluster Start time: "$start_time" $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $(date +%s) $(date +'%Y-%m-%d %T')" | tee -a "$time_stmp"
     echo "clusters-$cluster_name cluster-creation $start_time $(date +%s)" | tee -a "$burner_timestamp"
@@ -118,8 +119,10 @@ create_multi_clusters() {
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
 	    create_cluster "$cluster_param" "$cluster_name"
+	    echo "sleep 5 mins wait for promethues to be online"
+	    sleep 300
             kube_burner_run "$cluster_name"
-            sleep 600 # wait 10 mins before lauching another cluster
+            sleep 300 # wait 5 mins before lauching another cluster
        done
     fi
 }
@@ -200,9 +203,27 @@ wait_nodeport() {
     printf '%s\n' "$port"
 }
 
+# check if all the node-exporter pods are ready
+wait_monitoring_ready() {
+    local cluster="$1"
+    local kube_conf="$2"
+    local timeout="$3"
+    local exporter_num=0
+    let timeout+=$(date +%s)
+    node_replica=$(echo "$param_string" | sed -n 's/.*--node-pool-replicas \([0-9]\+\).*/\1/p')
+    while ((exporter_num<node_replica)); do
+        exporter_num=$(oc --kubeconfig "$kube_conf" get pod -n openshift-monitoring | grep node-exporter.*Running | wc -l)
+        echo "time now $(date +%s) and timeout: $timeout"
+        echo "$cluster node-exporter count: $exporter_num, waiting for all to be ready"
+        sleep 5
+        (($(date +%s)>timeout)) && die "Timeout while waiting for hosted cluster $cluster monitoring stack to be ready"
+    done
+    echo "monitoring is ready"
+}
+
 write_provision_time_to_csv() {
     local i=0
-    local header=("name" "create_secs" "provision_secs" "worker_secs" "config_secs" "nodeport_secs" "operator_secs" "total_secs")
+    local header=("name" "create_secs" "provision_secs" "worker_secs" "config_secs" "nodeport_secs" "operator_secs" "monitoring_secs" "total_secs")
     # if csv file doesn't exist, create it with a header line
     if [[ ! -e "$timing_csv" ]]; then
         sed 's/ /","/g;s/.*/"&"/' <<<"${header[*]}" > "$timing_csv"
@@ -240,10 +261,10 @@ kube_burner_run() {
         die "Tenant cluster kube-config file does not exist or it can not be read"
     fi
     {
-        (export KUBECONFIG="$dir_conf/$cluster_name"
+        export KUBECONFIG="$dir_conf/$cluster_name"
         echo "Running kube-burner $WORKLOAD workload against the following nodes"
         oc get nodes | head
-        cd "$target_dir" && ITERATIONS="$ITERATIONS" INDEXING=false WORKLOAD="$WORKLOAD" ./run.sh)
+        ITERATIONS="$ITERATIONS" WORKLOAD="$WORKLOAD" $target_dir/run.sh
         local end_time=$(date +%s)
         echo "Cluster=$cluster_name namespace=clusters-$cluster_name Start time: $start_time $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $end_time  $(date -d "@$end_time" +"%Y-%m-%d %T")"
     }   &> >(tee -a "$burner_run_log")
@@ -405,10 +426,19 @@ log_creation_phase() {
         wait_available "$dir_conf/$cluster" "3600"   # timeout 1 hour
         operator_secs=$SECONDS
         echo "operator_secs=$operator_secs"
+    }   &> >(tee -a "$deploy_log")
+
+    {   printf '%s\n' "$div $cluster $div"
+        SECONDS=0
+        wait_monitoring_ready "$cluster" "$dir_conf/$cluster" "7200"   # timeout 1 hour
+        monitoring_secs=$SECONDS
+        echo "monitoring_secs=$monitoring_secs"
         total_secs="$(($(date +%s)-start_time))"
         echo "total_secs=$total_secs"
     }   &> >(tee -a "$deploy_log")
-    timing_phase=("$cluster" "$provision_secs" "$worker_secs" "$config_secs" "$nodeport_secs" "$operator_secs" "$total_secs")
+    echo "log creation phase is done"
+    timing_phase=("$cluster" "$provision_secs" "$worker_secs" "$config_secs" "$nodeport_secs" "$operator_secs" "$monitoring_secs" "$total_secs")
+    echo "timing phase array: ${timing_phase[@]}"
 }
 
 #-- configuration --------------------------------------------------------------
