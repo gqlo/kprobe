@@ -1,8 +1,8 @@
-name=kv-w32-lso
+name=kv-w32-lvm-16g-a
 node-pool-replicas=32
 control-plane-availability-policy=HighlyAvailable
 node-selector=kubernetes.io/infra-virtualization=virt-components
-etcd-storage-class=nvme-lso
+etcd-storage-class=lvms-vg-nvme
 memory=32Gi
 cores=8
-release-image=quay.io/openshift-release-dev/ocp-release@sha256:28358de024c01a449b28f27fb4c122f15eb292a2becdf7c651511785c867884a
+release-image=quay.io/openshift-release-dev/ocp-release@sha256:e3fb8ace9881ae5428ae7f0ac93a51e3daa71fa215b5299cd3209e134cadfc9c
