@@ -3,7 +3,7 @@
 # helper script to launch kubevirt guest clusters
 
 # set scrict mode
-set -Eeuo pipefail
+# set -Eeuo pipefail
 # some global constants
 cluster_name=$(echo $RANDOM | md5sum | head -c 10)      # random string as default cluster name
 prog="${0##*/}"                                         # program name
@@ -107,20 +107,20 @@ create_multi_clusters() {
     if [[ $PARALLEL == true ]]; then
        for ((n=1; n<=CLUSTER_NUM; n++)); do
         {
-    	    local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
+            local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
-	    echo "Parallel: $cluster_param"
-	    create_cluster "$cluster_param" "$cluster_name"
+            echo "Parallel: $cluster_param"
+            create_cluster "$cluster_param" "$cluster_name"
         } &
        done
     else
        for ((i=1; i<=CLUSTER_NUM; i++)); do
-    	    local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
+            local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
-	    create_cluster "$cluster_param" "$cluster_name"
-	    echo "sleep 5 mins wait for promethues to be online"
-	    sleep 300
+            create_cluster "$cluster_param" "$cluster_name"
+            echo "sleep 10 mins wait for promethues to be online"
+            sleep 600
             kube_burner_run "$cluster_name"
             sleep 300 # wait 5 mins before lauching another cluster
        done
@@ -214,7 +214,7 @@ wait_monitoring_ready() {
     while ((exporter_num<node_replica)); do
         exporter_num=$(oc --kubeconfig "$kube_conf" get pod -n openshift-monitoring | grep node-exporter.*Running | wc -l)
         echo "time now $(date +%s) and timeout: $timeout"
-        echo "$cluster node-exporter count: $exporter_num, waiting for all to be ready"
+        echo "$cluster node-exporter $exporter_num/$node_replica ready"
         sleep 5
         (($(date +%s)>timeout)) && die "Timeout while waiting for hosted cluster $cluster monitoring stack to be ready"
     done
@@ -261,12 +261,12 @@ kube_burner_run() {
         die "Tenant cluster kube-config file does not exist or it can not be read"
     fi
     {
-        export KUBECONFIG="$dir_conf/$cluster_name"
+        (export KUBECONFIG="$dir_conf/$cluster_name"
         echo "Running kube-burner $WORKLOAD workload against the following nodes"
         oc get nodes | head
-        ITERATIONS="$ITERATIONS" WORKLOAD="$WORKLOAD" $target_dir/run.sh
+        ITERATIONS="$ITERATIONS" WORKLOAD="$WORKLOAD" $target_dir/run.sh)
         local end_time=$(date +%s)
-        echo "Cluster=$cluster_name namespace=clusters-$cluster_name Start time: $start_time $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $end_time  $(date -d "@$end_time" +"%Y-%m-%d %T")"
+        echo "Cluster=$cluster_name workload=$WORKLOAD namespace=clusters-$cluster_name Start time: $start_time $(date -d "@$start_time" +"%Y-%m-%d %T") End time: $end_time  $(date -d "@$end_time" +"%Y-%m-%d %T")"
     }   &> >(tee -a "$burner_run_log")
     echo "clusters-$cluster_name $WORKLOAD $start_time $end_time" | tee -a "$burner_timestamp"
 }
