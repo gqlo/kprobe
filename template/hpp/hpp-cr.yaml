@@ -7,6 +7,6 @@ spec:
   storagePools:
   - name: hpp-nvmes
     path: "/var/mnt/nvme-hpp"
-workload:
-  nodeSelector:
-    kubernetes.io/workers: "vm-workload"
+  workload:
+    nodeSelector:
+      kubernetes.io/workers: "vm-workload"
