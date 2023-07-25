@@ -119,10 +119,6 @@ create_multi_clusters() {
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
             create_cluster "$cluster_param" "$cluster_name"
-            echo "sleep 10 mins wait for promethues to be online"
-            sleep 600
-            kube_burner_run "$cluster_name"
-            sleep 300 # wait 5 mins before lauching another cluster
        done
     fi
 }
