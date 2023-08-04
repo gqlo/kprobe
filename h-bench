@@ -38,6 +38,8 @@ Usage: [Options] [name]
         -d  name        Destory the guest cluster by name. Guest kubeconfig will be deleted if exits.
         -p  profile     Extract promethus raw metrics based on provided metric profile and save it as
                         Json format. Examples are included in metric_profile/ dirctory.
+        -t  file        Extract the namespace, job name (kube-burner workload or cluster creation), start
+                        and end timestamp from a text file.
         -l  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
                         deafult to: $PARALLEL.
         -n  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
@@ -298,8 +300,9 @@ find_max() {
     echo $max
 }
 
-# read namespace kube-burner workload name from a text file
+# read namespace, job name(kube-burner workload name, cluster creation etc.), start and end time from a text file into bash array
 read_timestamps() {
+    local timestamp="$1"
     local line=""
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
@@ -308,9 +311,9 @@ read_timestamps() {
         if [[ "${!JOBS[@]}" =~ "$key" ]]; then
             die "Seems like you have duplicated workdload runs"
         fi
-        JOBS[$key]="${stamps[2]}"
-        echo "$key workload run time spent: $(( ${stamps[3]} - ${stamps[2]} ))"
-    done < "$burner_timestamp"
+        JOBS[$key]="${stamps[2]}-${stamps[3]}"
+        echo "$key job time start and end time gap: $(( ${stamps[3]} - ${stamps[2]} ))"
+    done < "$timestamp"
 }
 
 # Extract promethus raw metrics with given profile and timestamps.
@@ -318,12 +321,11 @@ read_timestamps() {
 prom_extract() {
     local metric_profile="$1"
     parse_metric_profile "$metric_profile"
-    read_timestamps
     for job in "${!JOBS[@]}"; do
-        start="${JOBS[$job]}"
-        end=$(( ${JOBS[$job]} + 7200 ))
+        start="${JOBS[$job]%%-*}"
+        end="${JOBS[$job]##*-}"
         namespace="${job%%:*}"
-        kube_workload="${job##*:}"
+        job_name="${job##*:}"
         for metric_name in "${!PROM_METRIC[@]}"; do
             QUERY_EXPRESSION=${PROM_METRIC[$metric_name]}
             if grep -q "filter" <<< "$QUERY_EXPRESSION"; then
@@ -332,8 +334,8 @@ prom_extract() {
             QUERY_EXPRESSION=$(urlencode $QUERY_EXPRESSION)
             oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
             curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
-            | jq > "$dir_out/$kube_workload-$namespace-$metric_name".json
-            echo finished extracting metrics: "$dir_out/$kube_workload-$namespace-$metric_name".json
+            | jq > "$dir_out/$job_name-$namespace-$metric_name".json
+            echo finished extracting metrics: "$dir_out/$job_name-$namespace-$metric_name".json
         done
     done
 }
@@ -469,7 +471,7 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "hf:ln:c:d:p:" opt; do
+while getopts "hf:ln:c:d:p:t:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
@@ -478,6 +480,7 @@ while getopts "hf:ln:c:d:p:" opt; do
         c) create_kubeconf  "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
+        t) read_timestamps  "$OPTARG"               ;;
         *) die "invalid options"                    ;;
     esac
 done
