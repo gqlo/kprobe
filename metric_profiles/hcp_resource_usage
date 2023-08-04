@@ -1,0 +1,6 @@
+cpu_usage_by_namespace:
+    - sum(irate(container_cpu_usage_seconds_total{namespace=~"clusters-kv-w10.*",container!="POD",name!="", pod!~"virt-launcher-kv-.*|importer-kv.*"}[2m])) by (namespace)
+cpu_usage_by_pod:
+    - sum(irate(container_cpu_usage_seconds_total{namespace=~"clusters-kv.*",container!="POD",name!="", pod!~"virt-launcher-kv-.*|importer-kv.*"}[2m])) by (pod)
+cpu_usage_by_container:
+    - sum(irate(container_cpu_usage_seconds_total{namespace=~"clusters-kv.*",container!="POD",name!="", pod!~"virt-launcher-kv-.*|importer-kv.*"}[2m])) by (container)
