@@ -43,6 +43,8 @@ Usage: [Options] [name]
         -l  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
                         deafult to: $PARALLEL.
         -n  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
+        -m  name        Calculate the pod count of mgmt and hcp node. Get detailed info on running and
+                        completed pod count.
 EOF
 }
 
@@ -301,6 +303,7 @@ find_max() {
 }
 
 # read namespace, job name(kube-burner workload name, cluster creation etc.), start and end time from a text file into bash array
+# need to find a way to ensure timestamp get read first
 read_timestamps() {
     local timestamp="$1"
     local line=""
@@ -338,6 +341,30 @@ prom_extract() {
             echo finished extracting metrics: "$dir_out/$job_name-$namespace-$metric_name".json
         done
     done
+}
+
+count_rows() {
+    local expr="$1"
+    awk  "$expr"' {count++} END {print count}'
+}
+
+get_pod_count() {
+    local cluster_name="$1"
+    hcp_pod_count=$(oc get pod -n clusters-$cluster_name -o wide | count_rows '!/virt-lau.*/')
+    running_hcp_pod_count=$(oc get pod -n clusters-$cluster_name -o wide | count_rows '/Running/ && !/virt-lau.*/')
+    other_pod_count=$((hcp_pod_count-running_hcp_pod_count))
+    dameon_operator_pod=$(oc get pod -A -o wide | grep 'worker001\|worker002\|worker003' | count_rows '!/clusters-kv.*/')
+    running_mgmt_pod_count=$(oc get pod -o wide -A | grep -E ' +master-[0-9]+ +'| count_rows '/Running/')
+    other_mgmt_pod_count=$(oc get pod -o wide -A | grep -E ' +master-[0-9]+ +'| count_rows '!/Running/')
+    echo -e \
+    "
+    hcp pod per cluster count=$hcp_pod_count\n\
+    running hcp pod per cluster count=$running_hcp_pod_count\n\
+    Non-running hcp per cluster pod count=$other_pod_count\n\
+    daemonset or operator pods across all hcp nodes=$dameon_operator_pod
+    mgmt node running pod=$running_mgmt_pod_count\n\
+    other mgmt pod=$other_mgmt_pod_count\n\
+    "
 }
 
 create_ingress_service() {
@@ -471,7 +498,7 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "hf:ln:c:d:p:t:" opt; do
+while getopts "hf:ln:c:d:p:t:m:" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
@@ -481,6 +508,7 @@ while getopts "hf:ln:c:d:p:t:" opt; do
         d) destory_cluster  "$OPTARG"               ;;
         p) prom_extract     "$OPTARG"               ;;
         t) read_timestamps  "$OPTARG"               ;;
+        m) get_pod_count    "$OPTARG"               ;;
         *) die "invalid options"                    ;;
     esac
 done
