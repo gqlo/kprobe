@@ -5,8 +5,13 @@ import re
 import csv
 import json
 import glob
+import sys
 
 # Python scripts process promethus JSON raw metrics
+
+def sys_exit(str):
+    print(f"{str}")
+    sys.exit(1)
 
 def is_dir(dir_path):
     if not os.path.isdir(dir_path):
@@ -14,11 +19,28 @@ def is_dir(dir_path):
         return False
     return True
 
-def is_file_readable(file_path):
+def file_is_readable(file_path):
     if not os.access(file_path, os.R_OK):
         print(f"The file at '{file_path}' is not readable")
         return False
     return True
+
+def obj_exist(obj):
+    return obj is not None
+
+def check_meta_data(json_obj):
+    status = json_obj.get("status")
+    if obj_exist(status) and status == "success":
+        print("Promethus query status returned success")
+    else:
+        sys_exit("Promethus query status returned non-success or status value is not present")
+    data = json_obj.get("data")
+    res_type = data.get("resultType")
+    res = data.get("result")
+    if obj_exist(data) and obj_exist(res_type) and obj_exist(res) and len(res) >= 1:
+        print(f"{len(res)} entries of data found, resultType: {res_type}, ")
+    else:
+        sys_exit("No data found, please check your json file")
 
 # read the path of json files with given directory
 def read_json_files(dir_path):
@@ -34,6 +56,7 @@ def read_json_file(file_path):
     except IOError:
         print(f"Error: could not open file '{file_path}'")
 
+# row expects an array
 def csv_write_row(path, row):
     try:
         with open(path, mode='a', newline='') as file:
@@ -53,13 +76,16 @@ Assume promethus metric maintains a consistent structure as follows:
           }
 }
 """
-def promjson_to_csv(dir_path):
+# process json files from the entire directory
+def json_dir_to_csv(dir_path):
     file_paths = read_json_files(dir_path)
     if len(file_paths) == 0:
         print("No json file is found")
         return
     for file_path in file_paths:
-        result = read_json_file(file_path)['data']["result"]
+        json_obj = read_json_file(file_path)
+        check_meta_data(json_obj)
+        result = json_obj['data']["result"]
         headers = []
         values  = []
         for item in result:
@@ -72,5 +98,35 @@ def promjson_to_csv(dir_path):
             csv_write_row(csv_file_path, row)
         print(f"Finished writting data into csv file at location: '{csv_file_path}'")
 
+# process a single json file
+def json_file_to_csv(file_path, scale):
+    if file_is_readable(file_path):
+        json_obj = read_json_file(file_path)
+    check_meta_data(json_obj)
+    result = json_obj['data']["result"]
+    csv_file_path=re.sub(r"\.json$", ".csv", file_path)
+    csv_write_row(csv_file_path, ["Container", "Max", "Avg"])
+    for item in result:
+        values = []
+        metric_names = list(item['metric'].keys())
+        if len(metric_names) < 1:
+            sys_exit("no metric names found, please check the json file")
+        container_name = '-'.join([ item['metric'][key] for key in metric_names])
+        values = [float(value[1])/scale for value in item['values']]
+        non_zero_values = [value for value in values if value != float(0)]
+        print(container_name, len(non_zero_values), len(values))
+        max_val = 0.0 if len(non_zero_values) == 0 else max(non_zero_values)
+        mean_val = 0.0 if len(non_zero_values) == 0 else sum(non_zero_values)/float(len(non_zero_values))
+        row = [container_name, max_val, mean_val]
+        csv_write_row(csv_file_path, row)
+
 if __name__ == '__main__':
-    res = promjson_to_csv("/home/guoqingli/hypershift/output")
+    if len(sys.argv) < 2 and len(sys.argv) > 3:
+        print("Incorrect number of arguments. Usage: prom_py <json filename> | <scale_factor>")
+        sys.exit(1)
+    if len(sys.argv) == 3:
+        scale = float(sys.argv[2])
+    else:
+        scale = 1.0
+    file_path = sys.argv[1]
+    json_file_to_csv(file_path, scale)
