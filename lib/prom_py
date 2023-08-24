@@ -6,6 +6,9 @@ import csv
 import json
 import glob
 import sys
+import argparse
+import yaml
+import subprocess
 
 # Python scripts process promethus JSON raw metrics
 
@@ -120,13 +123,75 @@ def json_file_to_csv(file_path, scale):
         row = [container_name, max_val, mean_val]
         csv_write_row(csv_file_path, row)
 
+def is_int(num):
+    try:
+        int(num)
+        return True
+    except ValueError:
+        print("Error: expecting the time stamp to be an integer")
+        return False
+
+def check_time_stamp(stamp):
+    if len(stamp) != 4:
+        sys_exit("expecting 4 parts in a stamp, <namespace> <job type> <start time> <end time>")
+    if is_int(stamp[2]) and is_int(stamp[3]) and (int(stamp[3]) - int(stamp[2])) < 0:
+        sys_exit("end time stamp is before start time stamp")
+
+def read_time_stamps(file_path):
+    jobs = {}
+    if file_is_readable(file_path):
+        with open(file_path, 'r') as file_obj:
+            for line in file_obj:
+                if line.strip():
+                    stamp = line.strip().split()
+                    check_time_stamp(stamp)
+                jobs["_".join(stamp[:2])]="_".join(stamp[2:])
+    return jobs
+
+def read_yaml(file_path):
+    if file_is_readable(file_path):
+         with open(file_path, 'r') as file:
+            return yaml.safe_load(file)
+
+def parse_metric_profile(file_path):
+    if file_is_readable(file_path):
+        return read_yaml(file_path)
+
+# jobs is a dict uses namespace_job_type as the key, start_end timestamp as the value
+def extract_prom_json_data(metric_profile, jobs):
+    for job in jobs.keys():
+        start = jobs[job].split("_")[0]
+        end = jobs[job].split("_")[1]
+        for metric_name in metric_profile.keys():
+            QUERY_EXPRESSION=metric_profile[metric_name]
+            urlencode_cmd = ["urlencode", QUERY_EXPRESSION]
+            encoded_result = subprocess.run(urlencode_cmd, capture_output=True, text="True")
+            encoded_expr = encoded_result.stdout.replace('\n', '').replace('\r', '')
+            curl_cmd = (
+            f"oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- "
+            f"curl -s 'http://localhost:9090/api/v1/query_range?"
+            f"query={encoded_expr}&start={start}&end={end}&step=30s' | "
+            f"jq > {job}_{metric_name}.json"
+            )
+            query_result = subprocess.run(curl_cmd, capture_output=True, shell=True)
+            print(query_result.stdout)
+            print(query_result.stderr)
+            print("status=", query_result.returncode)
+
 if __name__ == '__main__':
-    if len(sys.argv) < 2 and len(sys.argv) > 3:
-        print("Incorrect number of arguments. Usage: prom_py <json filename> | <scale_factor>")
-        sys.exit(1)
-    if len(sys.argv) == 3:
-        scale = float(sys.argv[2])
-    else:
-        scale = 1.0
-    file_path = sys.argv[1]
-    json_file_to_csv(file_path, scale)
+    parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
+    parser.add_argument('-s', '--scale', type=int, default=1, help="the scale factor number to be divided")
+    parser.add_argument('-j', '--file', type=str, help="json file path, extract data points as csv format")
+    parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
+    parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
+
+    args = parser.parse_args()
+    if bool(args.timestamp) != bool(args.profile):
+        parser.error("both --timestamp and --profile file path must be passed together")
+
+    if args.file:
+        json_file_to_csv(args.file, args.scale)
+    elif args.profile or args.timestamp:
+        jobs = read_time_stamps(args.timestamp)
+        metric_profile = read_yaml(args.profile)
+        extract_prom_json_data(metric_profile, jobs)

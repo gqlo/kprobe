@@ -116,7 +116,9 @@ create_multi_clusters() {
             echo "Parallel: $cluster_param"
             create_cluster "$cluster_param" "$cluster_name"
         } &
+       sleep 5
        done
+       wait
     else
        for ((i=1; i<=CLUSTER_NUM; i++)); do
             local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
