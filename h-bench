@@ -14,6 +14,7 @@ time="$(date -d "@$start_time" '+%F_%T')"               # time string
 div="$(printf '=%.s' {1..40})"                          # divider line string
 param_string=""                                         # parameter string
 PARALLEL=false                                          # determine if it's a parallel cluster creation
+DEBUG=false                                             # determine if it's running in debug mode
 OC=$(command -v oc)                                     # check if oc cli exists
 HS=$(command -v hypershift)                             # check if hypershift cli exits
 URLENCODE=$(command -v urlencode)                       # check if urlencode exits
@@ -85,7 +86,12 @@ create_cluster() {
     {
         printf '%s\n' "$div $cluster $div"
         SECONDS=0
-        hypershift create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
+        if [[ $DEBUG == true ]]; then
+            echo "cluster_param=$cluster_param"
+            return
+        else
+            hypershift create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
+        fi
         create_secs=$SECONDS
         echo "create_secs=$create_secs"
     } &> >(tee -a "$control_log")
@@ -104,12 +110,14 @@ create_cluster() {
 create_multi_clusters() {
     local n=1
     local i=1
+
     if [[ ! $param_string =~ "--name" ]]; then
         param_string+="--name $cluster_name"
     fi
+
     echo "CLUSTER_NUM $CLUSTER_NUM"
     if [[ $PARALLEL == true ]]; then
-       for ((n=1; n<=CLUSTER_NUM; n++)); do
+       for ((n=1; n<CLUSTER_NUM; n++)); do
         {
             local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
@@ -120,12 +128,18 @@ create_multi_clusters() {
        done
        wait
     else
-       for ((i=1; i<=CLUSTER_NUM; i++)); do
+       for ((i=1; i<CLUSTER_NUM; i++)); do
             local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
             create_cluster "$cluster_param" "$cluster_name"
        done
+    fi
+
+    if [[ $CLUSTER_NUM == 1 ]]; then
+        local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&/")
+        local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
+        create_cluster "$cluster_param" "$cluster_name"
     fi
 }
 
@@ -142,12 +156,22 @@ destory_cluster() {
     if [[ "$1" == "--all" ]]; then
         for cluster in $(oc get hc -A | awk  'NR>1 {print $2}'); do
         {
-            hypershift destroy cluster kubevirt --name "$cluster"
+            if [[ $DEBUG == true ]]; then
+                echo "hypershift destroy cluster kubevirt --name $cluster"
+                return
+            else:
+                hypershift destroy cluster kubevirt --name "$cluster"
+            fi
             [[ -f "$dir_conf/$cluster" ]] && sudo rm "$dir_conf/$cluster"
         } &
         done
     else
-        hypershift destroy cluster kubevirt --name "$name"
+        if [[ $DEBUG == true ]]; then
+            echo "hypershift destroy cluster kubevirt --name $cluster"
+            return
+        else
+            hypershift destroy cluster kubevirt --name "$name"
+        fi
         [[ -f "$$dir_conf/$name" ]] && sudo rm "$dir_conf/$name"
     fi
 }
@@ -500,11 +524,12 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-while getopts "hf:ln:c:d:p:t:m:" opt; do
+while getopts "hf:ln:c:d:p:t:m:v" opt; do
     case "$opt" in
         h) help_msg                                 ;;
         f) process_job_file "$OPTARG"               ;;
         l) PARALLEL=true                            ;;
+        v) DEBUG=true                               ;;
         n) CLUSTER_NUM="$OPTARG"                    ;;
         c) create_kubeconf  "$OPTARG"               ;;
         d) destory_cluster  "$OPTARG"               ;;
