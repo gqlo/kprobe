@@ -181,7 +181,7 @@ def extract_prom_json_data(metric_profile, jobs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
     parser.add_argument('-s', '--scale', type=int, default=1, help="the scale factor number to be divided")
-    parser.add_argument('-f', '--file', type=str, help="json file path")
+    parser.add_argument('-j', '--file', type=str, help="json file path, extract data points as csv format")
     parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
     parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
 
