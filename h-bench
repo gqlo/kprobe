@@ -87,7 +87,7 @@ create_cluster() {
         printf '%s\n' "$div $cluster $div"
         SECONDS=0
         if [[ $DEBUG == true ]]; then
-            echo "cluster_param=$cluster_param"
+            echo "hypershift create cluster kubevirt $cluster_param"
             return
         else
             hypershift create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
