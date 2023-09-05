@@ -50,10 +50,28 @@ def read_json_files(dir_path):
     if is_dir(dir_path):
         return glob.glob(f"{dir_path}/*.json")
 
+def read_csv_files(dir_path):
+    if bool(re.match(r"^~", dir_path)):
+        print(f"~ symbol found")
+        dir_path = os.path.expanduser(dir_path)
+    if is_dir(dir_path):
+        print(f"globing path: {dir_path}")
+        return glob.glob(f"{dir_path}/*.csv")
+    else:
+        sys_exit(f"{dir_path} is not recognized as a directory")
+
 def read_json_file(file_path):
     try:
         with open(file_path, "r") as file:
             return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: file '{file_path}' does not exists")
+    except IOError:
+        print(f"Error: could not open file '{file_path}'")
+
+def read_csv_file(file_path):
+    try:
+        return csv.reader(open(file_path, "r"))
     except FileNotFoundError:
         print(f"Error: file '{file_path}' does not exists")
     except IOError:
@@ -185,6 +203,7 @@ def extract_prom_json_data(metric_profile, time_stamp):
         namespace = re.sub(r'\#.*$','', entry)
         for metric_name in metric_profile.keys():
             QUERY_EXPRESSION=re.sub("placeholder", namespace, metric_profile[metric_name])
+            print(f"executing query: {QUERY_EXPRESSION}")
             urlencode_cmd = ["urlencode", QUERY_EXPRESSION]
             encoded_result = subprocess.run(urlencode_cmd, capture_output=True, text="True")
             encoded_expr = encoded_result.stdout.replace('\n', '').replace('\r', '')
@@ -215,6 +234,29 @@ def sum_csv_column(csv_file_path):
         csv_write_row(column_sum_path, [max_c, avg_c])
     print(f"saving the column of sum at {column_sum_path}")
 
+def sum_csv_column_by_dir(csv_dir):
+        csv_files = read_csv_files(csv_dir)
+        if len(csv_files) == 0:
+            print("No csv file is found")
+            return
+        for file_path in csv_files:
+            added_col =[]
+            max_c = 0
+            avg_c = 0
+            column_sum_path = re.sub(r'[^/\\]*\.csv$', 'column_sum', file_path)
+            csv_obj = read_csv_file(file_path)
+            for index, row in enumerate(csv_obj):
+                if index == 0:
+                    print(f"adding the column values, headers:{row}")
+                    added_col.append(row[4])
+                else:
+                    max_c += float(row[1])
+                    avg_c += float(row[2])
+            print(f"total max: {max_c}, avg: {avg_c}")
+            added_col.append(max_c)
+            added_col.append(avg_c)
+            csv_write_row(column_sum_path, added_col)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
     parser.add_argument('-s', '--scale', type=int, default=1, help="the scale factor number to be divided")
@@ -222,6 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
     parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
     parser.add_argument('-c', '--csv', type=str, help="add csv column value")
+    parser.add_argument('-d', '--dir', type=str, help="add csv column of multile files")
 
     args = parser.parse_args()
     if bool(args.timestamp) != bool(args.profile):
@@ -235,3 +278,5 @@ if __name__ == '__main__':
         extract_prom_json_data(metric_profile, time_stamp)
     elif args.csv:
         sum_csv_column(args.csv)
+    elif args.dir:
+        sum_csv_column_by_dir(args.dir)
