@@ -56,9 +56,35 @@ def read_csv_files(dir_path):
         dir_path = os.path.expanduser(dir_path)
     if is_dir(dir_path):
         print(f"globing path: {dir_path}")
-        return glob.glob(f"{dir_path}/*.csv")
+        glob_obj = glob.glob(f"{dir_path}/*.csv")
+        if len(glob_obj) < 1:
+            sys_exit(f"no csv files found at {dir_path}")
+        else:
+            print(f"{len(glob_obj)} csv files found in total")
+            return glob.glob(f"{dir_path}/*.csv")
     else:
         sys_exit(f"{dir_path} is not recognized as a directory")
+
+def validate_csv_file_group(file_glob_obj):
+    first_path = list(file_glob_obj)[0]
+    file_name = re.search(r'[^/]+$', first_path)[0]
+    file_attr = file_name.split("#")
+    if len(file_attr) != 3:
+        sys_exit("{first_path} does not look right, please double check")
+    ns = file_attr[0]
+    iterations = file_attr[1]
+    metric_name = file_attr[2]
+    directory = re.search(r'^(.+/)', first_path)[1]
+    for index, path in enumerate(file_glob_obj):
+        attr = re.search(r'[^/]+$', path)[0].split("#")
+        if attr[0] != ns:
+            sys_exit("{path} seems to belong to a different namespace, please double check")
+        if index !=0:
+            if attr[1] == iterations:
+                sys_exit("{path} seems to have duplicated iteration entries, please double check")
+        if attr[2] != metric_name:
+            sys_exit("{path} seems to have different metric names, please double check")
+    print("all csv files checks are done, ready to go")
 
 def read_json_file(file_path):
     try:
@@ -236,14 +262,17 @@ def sum_csv_column(csv_file_path):
 
 def sum_csv_column_by_dir(csv_dir):
         csv_files = read_csv_files(csv_dir)
+        validate_csv_file_group(csv_files)
         if len(csv_files) == 0:
             print("No csv file is found")
             return
+        column_sum_path = "total_"+re.search(r'[^/]+$', list(csv_files)[0])[0].split("#")[2]
         for file_path in csv_files:
+            print(file_path, type(file_path))
             added_col =[]
             max_c = 0
             avg_c = 0
-            column_sum_path = re.sub(r'[^/\\]*\.csv$', 'column_sum', file_path)
+            # column_sum_path = re.sub(r'[^/\\]*\.csv$',, file_path)
             csv_obj = read_csv_file(file_path)
             for index, row in enumerate(csv_obj):
                 if index == 0:
