@@ -50,10 +50,28 @@ def read_json_files(dir_path):
     if is_dir(dir_path):
         return glob.glob(f"{dir_path}/*.json")
 
+def read_csv_files(dir_path):
+    if bool(re.match(r"^~", dir_path)):
+        print(f"~ symbol found")
+        dir_path = os.path.expanduser(dir_path)
+    if is_dir(dir_path):
+        print(f"globing path: {dir_path}")
+        return glob.glob(f"{dir_path}/*.csv")
+    else:
+        sys_exit(f"{dir_path} is not recognized as a directory")
+
 def read_json_file(file_path):
     try:
         with open(file_path, "r") as file:
             return json.load(file)
+    except FileNotFoundError:
+        print(f"Error: file '{file_path}' does not exists")
+    except IOError:
+        print(f"Error: could not open file '{file_path}'")
+
+def read_csv_file(file_path):
+    try:
+        return csv.reader(open(file_path, "r"))
     except FileNotFoundError:
         print(f"Error: file '{file_path}' does not exists")
     except IOError:
@@ -108,20 +126,34 @@ def json_file_to_csv(file_path, scale):
     check_meta_data(json_obj)
     result = json_obj['data']["result"]
     csv_file_path=re.sub(r"\.json$", ".csv", file_path)
-    csv_write_row(csv_file_path, ["Container", "Max", "Avg"])
+    item = result[0]
+    metric_names = list(item['metric'].keys())
+    if len(metric_names) < 1:
+        sys_exit("no metric names found, please check the json file")
+    if "pod" in metric_names:
+        metric_type = "pod"
+    elif "container" in metric_names:
+        metric_type = "container"
+    else:
+        metric_type = "-".join(metric_names)
+    file_name = os.path.basename(file_path)
+    file_attr = file_name.split("#")
+    namespace = file_attr[0]
+    job_type = file_attr[1]
+    metric_name = re.sub(r'\..*$', '', file_attr[2])
+    csv_write_row(csv_file_path, [metric_type, "Max", "Avg", namespace, job_type, metric_name])
     for item in result:
         values = []
-        metric_names = list(item['metric'].keys())
-        if len(metric_names) < 1:
-            sys_exit("no metric names found, please check the json file")
         container_name = '-'.join([ item['metric'][key] for key in metric_names])
         values = [float(value[1])/scale for value in item['values']]
         non_zero_values = [value for value in values if value != float(0)]
-        print(container_name, len(non_zero_values), len(values))
+        if len(non_zero_values) != len(values) or len(non_zero_values) == 0:
+            print(f"found zero value: {container_name}, non-zero values/zero values count{len(values)}/{len(non_zero_values)}")
         max_val = 0.0 if len(non_zero_values) == 0 else max(non_zero_values)
         mean_val = 0.0 if len(non_zero_values) == 0 else sum(non_zero_values)/float(len(non_zero_values))
         row = [container_name, max_val, mean_val]
         csv_write_row(csv_file_path, row)
+    print(f"csv file saved at {csv_file_path}")
 
 def is_int(num):
     try:
@@ -133,20 +165,25 @@ def is_int(num):
 
 def check_time_stamp(stamp):
     if len(stamp) != 4:
-        sys_exit("expecting 4 parts in a stamp, <namespace> <job type> <start time> <end time>")
-    if is_int(stamp[2]) and is_int(stamp[3]) and (int(stamp[3]) - int(stamp[2])) < 0:
+        sys_exit("expecting 4 parts in a stamp, <namespace> <entry type> <start time> <end time>")
+    # Assume unix time stamp is either 10 (seconds) or 13 (milliseconds) digits
+    if not is_int(stamp[2]) or not is_int(stamp[3]) or len(stamp[2]) not in [10, 13] or len(stamp[3]) not in [10, 13]:
+        sys_exit("invalid start and end time stamp, expecting a unix format. eg.1630596238")
+    if (int(stamp[3]) - int(stamp[2])) < 0:
         sys_exit("end time stamp is before start time stamp")
+    duration = int(stamp[3]) - int(stamp[2])
+    print(f"Time stamp durtaion: {duration} seconds")
 
 def read_time_stamps(file_path):
-    jobs = {}
+    time_stamp = {}
     if file_is_readable(file_path):
         with open(file_path, 'r') as file_obj:
             for line in file_obj:
                 if line.strip():
-                    stamp = line.strip().split()
-                    check_time_stamp(stamp)
-                jobs["_".join(stamp[:2])]="_".join(stamp[2:])
-    return jobs
+                    entry = line.strip().split()
+                    check_time_stamp(entry)
+                time_stamp["#".join(entry[:2])]="_".join(entry[2:])
+    return time_stamp
 
 def read_yaml(file_path):
     if file_is_readable(file_path):
@@ -157,13 +194,16 @@ def parse_metric_profile(file_path):
     if file_is_readable(file_path):
         return read_yaml(file_path)
 
-# jobs is a dict uses namespace_job_type as the key, start_end timestamp as the value
-def extract_prom_json_data(metric_profile, jobs):
-    for job in jobs.keys():
-        start = jobs[job].split("_")[0]
-        end = jobs[job].split("_")[1]
+# time_stamp is a dict uses namespace_entry_type as the key, start_end timestamp as the value
+def extract_prom_json_data(metric_profile, time_stamp):
+    for entry in time_stamp.keys():
+        start = time_stamp[entry].split("_")[0]
+        end = time_stamp[entry].split("_")[1]
+        # chop everything after and include #
+        namespace = re.sub(r'\#.*$','', entry)
         for metric_name in metric_profile.keys():
-            QUERY_EXPRESSION=metric_profile[metric_name]
+            QUERY_EXPRESSION=re.sub("placeholder", namespace, metric_profile[metric_name])
+            print(f"executing query: {QUERY_EXPRESSION}")
             urlencode_cmd = ["urlencode", QUERY_EXPRESSION]
             encoded_result = subprocess.run(urlencode_cmd, capture_output=True, text="True")
             encoded_expr = encoded_result.stdout.replace('\n', '').replace('\r', '')
@@ -171,12 +211,51 @@ def extract_prom_json_data(metric_profile, jobs):
             f"oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- "
             f"curl -s 'http://localhost:9090/api/v1/query_range?"
             f"query={encoded_expr}&start={start}&end={end}&step=30s' | "
-            f"jq > {job}_{metric_name}.json"
+            f"jq > {entry}#{metric_name}.json"
             )
             query_result = subprocess.run(curl_cmd, capture_output=True, shell=True)
-            print(query_result.stdout)
-            print(query_result.stderr)
-            print("status=", query_result.returncode)
+            print(f"extracted {entry}#{metric_name}.json, status code={query_result.returncode}, stdout={query_result.stdout}, stderr={query_result.stderr}")
+
+def sum_csv_column(csv_file_path):
+    max_c = 0
+    avg_c = 0
+    # matches non / or \ (windows) characters followed by .csv at the end, replace it with column_sum.csv
+    # keep the path if it is supplied
+    column_sum_path = re.sub(r'[^/\\]*\.csv$', 'column_sum.csv', csv_file_path)
+    with open(csv_file_path, 'r') as file:
+        csv_obj = csv.reader(file)
+        for index, row in enumerate(csv_obj):
+            if index == 0:
+                csv_write_row(column_sum_path, row)
+            else:
+                max_c += float(row[1])
+                avg_c += float(row[2])
+        print(f"total max: {max_c}, avg: {avg_c}")
+        csv_write_row(column_sum_path, [max_c, avg_c])
+    print(f"saving the column of sum at {column_sum_path}")
+
+def sum_csv_column_by_dir(csv_dir):
+        csv_files = read_csv_files(csv_dir)
+        if len(csv_files) == 0:
+            print("No csv file is found")
+            return
+        for file_path in csv_files:
+            added_col =[]
+            max_c = 0
+            avg_c = 0
+            column_sum_path = re.sub(r'[^/\\]*\.csv$', 'column_sum', file_path)
+            csv_obj = read_csv_file(file_path)
+            for index, row in enumerate(csv_obj):
+                if index == 0:
+                    print(f"adding the column values, headers:{row}")
+                    added_col.append(row[4])
+                else:
+                    max_c += float(row[1])
+                    avg_c += float(row[2])
+            print(f"total max: {max_c}, avg: {avg_c}")
+            added_col.append(max_c)
+            added_col.append(avg_c)
+            csv_write_row(column_sum_path, added_col)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
@@ -184,6 +263,8 @@ if __name__ == '__main__':
     parser.add_argument('-j', '--file', type=str, help="json file path, extract data points as csv format")
     parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
     parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
+    parser.add_argument('-c', '--csv', type=str, help="add csv column value")
+    parser.add_argument('-d', '--dir', type=str, help="add csv column of multile files")
 
     args = parser.parse_args()
     if bool(args.timestamp) != bool(args.profile):
@@ -192,6 +273,10 @@ if __name__ == '__main__':
     if args.file:
         json_file_to_csv(args.file, args.scale)
     elif args.profile or args.timestamp:
-        jobs = read_time_stamps(args.timestamp)
+        time_stamp = read_time_stamps(args.timestamp)
         metric_profile = read_yaml(args.profile)
-        extract_prom_json_data(metric_profile, jobs)
+        extract_prom_json_data(metric_profile, time_stamp)
+    elif args.csv:
+        sum_csv_column(args.csv)
+    elif args.dir:
+        sum_csv_column_by_dir(args.dir)
