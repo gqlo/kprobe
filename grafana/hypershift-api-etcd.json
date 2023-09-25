@@ -528,7 +528,32 @@
           },
           "unit": "decgbytes"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "clusters-kv-w9-lvm-128g-32vcpu-1"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 5,
@@ -559,7 +584,7 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "sum(container_memory_rss{namespace=~\"clusters-kv.*\", container!=\"POD\", pod!~\"virt-launcher.*|importer-kv.*\"}/1024/1024/1024) by (namespace)  ",
+          "expr": "sum(container_memory_rss{namespace=~\"clusters-kv.*\", container!=\"POD\",container!=\"\", pod!=\"\", pod!~\"virt-launcher.*|importer-kv.*\"}/1024/1024/1024) by (namespace)  ",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -733,7 +758,32 @@
           },
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "clusters-kv-w9-lvm-128g-32vcpu-1"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 6,
@@ -766,8 +816,8 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "sum(irate(container_cpu_usage_seconds_total{namespace=~\"clusters-kv-w10.*\",container!=\"POD\",name!=\"\", pod!~\"virt-launcher-kv-.*|importer-kv.*\"}[2m])*100) by (namespace)",
-          "hide": true,
+          "expr": "sum(irate(container_cpu_usage_seconds_total{namespace=~\"clusters-kv.*\",container!=\"POD\",name!=\"\", container!=\"\", pod!=\"\", pod!~\"virt-launcher-kv-.*|importer-kv.*\"}[2m])*100) by (namespace)",
+          "hide": false,
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -778,8 +828,8 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "sum(irate(container_cpu_usage_seconds_total{namespace=~\"clusters-kv.*\",container!=\"POD\",name!=\"\", pod!~\"virt-launcher-kv-.*|importer-kv.*\"}[2m])*100) by (pod)",
-          "hide": false,
+          "expr": "sum(irate(container_cpu_usage_seconds_total{namespace=~\"clusters-kv.*\",container!=\"POD\",name!=\"\", container!=\"\", pod!=\"\", pod!~\"virt-launcher-kv-.*|importer-kv.*\"}[2m])*100) by (pod)",
+          "hide": true,
           "legendFormat": "__auto",
           "range": true,
           "refId": "B"
@@ -949,7 +999,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "decgbytes"
         },
         "overrides": []
       },
@@ -959,7 +1010,7 @@
         "x": 0,
         "y": 26
       },
-      "id": 16,
+      "id": 26,
       "options": {
         "legend": {
           "calcs": [
@@ -982,13 +1033,13 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "(sum by (namespace) (rate(coredns_dns_responses_total{rcode=\"SERVFAIL\"}[5m])) / sum by (namespace) (rate(coredns_dns_responses_total[5m]))) > 0.01",
+          "expr": "sum(container_memory_rss{namespace=~\"clusters-kv.*\", container!=\"POD\", container!=\"\", pod!=\"\", pod=~\"virt-launcher.*|importer-kv.*\"}/1024/1024/1024) by (namespace)  ",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Core DNS error rate",
+      "title": "vm worker mem usage",
       "type": "timeseries"
     },
     {
@@ -1079,7 +1130,7 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "sum(container_memory_rss{namespace=~\"openshift-cnv\", container!=\"POD\", pod=~\"virt-api.*|virt-control.*\"}/1024/1024) by (pod)  ",
+          "expr": "sum(container_memory_rss{namespace=~\"openshift-cnv\", container!=\"POD\", container!=\"\", pod!=\"\", pod=~\"virt-api.*|virt-control.*\"}/1024/1024) by (pod)  ",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1153,8 +1204,7 @@
                 "value": 80
               }
             ]
-          },
-          "unit": "decgbytes"
+          }
         },
         "overrides": []
       },
@@ -1164,7 +1214,7 @@
         "x": 0,
         "y": 33
       },
-      "id": 26,
+      "id": 16,
       "options": {
         "legend": {
           "calcs": [
@@ -1187,13 +1237,13 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "sum(container_memory_rss{namespace=~\"clusters-kv.*\", container!=\"POD\", pod=~\"virt-launcher.*|importer-kv.*\"}/1024/1024/1024) by (namespace)  ",
+          "expr": "(sum by (namespace) (rate(coredns_dns_responses_total{rcode=\"SERVFAIL\"}[5m])) / sum by (namespace) (rate(coredns_dns_responses_total[5m]))) > 0.01",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "vm worker mem usage",
+      "title": "Core DNS error rate",
       "type": "timeseries"
     },
     {
@@ -1534,7 +1584,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": false,
+  "refresh": "",
   "revision": 1,
   "schemaVersion": 38,
   "style": "dark",
@@ -1543,13 +1593,13 @@
     "list": []
   },
   "time": {
-    "from": "2023-07-26T14:44:26.000Z",
-    "to": "2023-07-26T19:53:50.000Z"
+    "from": "now-3h",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "utc",
   "title": "hypershift-api-etcd",
   "uid": "kvGpi3X4z",
-  "version": 33,
+  "version": 4,
   "weekStart": ""
 }
