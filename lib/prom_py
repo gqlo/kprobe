@@ -191,7 +191,7 @@ def is_int(num):
 
 def check_time_stamp(stamp):
     if len(stamp) != 4:
-        sys_exit("expecting 4 parts in a stamp, <namespace> <entry type> <start time> <end time>")
+        sys_exit(f"found {len(stamp)} parameters in a time stamp, expecting 4 parts in stamp={stamp}, <namespace> <entry type> <start time> <end time>")
     # Assume unix time stamp is either 10 (seconds) or 13 (milliseconds) digits
     if not is_int(stamp[2]) or not is_int(stamp[3]) or len(stamp[2]) not in [10, 13] or len(stamp[3]) not in [10, 13]:
         sys_exit("invalid start and end time stamp, expecting a unix format. eg.1630596238")
@@ -205,6 +205,7 @@ def read_time_stamps(file_path):
     if file_is_readable(file_path):
         with open(file_path, 'r') as file_obj:
             for line in file_obj:
+                if line.strip().startswith("#"): continue
                 if line.strip():
                     entry = line.strip().split()
                     check_time_stamp(entry)
