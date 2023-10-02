@@ -40,8 +40,12 @@ def check_meta_data(json_obj):
     data = json_obj.get("data")
     res_type = data.get("resultType")
     res = data.get("result")
+    empty_metric = 0
     if obj_exist(data) and obj_exist(res_type) and obj_exist(res) and len(res) >= 1:
-        print(f"{len(res)} entries of data found, resultType: {res_type}, ")
+        for item in res:
+            if len(item['metric']) == 0:
+                empty_metric += 1
+        print(f"total of {len(res)} entries of data found, {empty_metric} entires without metric name, resultType: {res_type}")
     else:
         sys_exit("No data found, please check your json file")
 
@@ -169,6 +173,8 @@ def json_file_to_csv(file_path, scale):
     metric_name = re.sub(r'\..*$', '', file_attr[2])
     csv_write_row(csv_file_path, [metric_type, "Max", "Avg", namespace, job_type, metric_name])
     for item in result:
+        if len(item['metric']) == 0:
+            continue
         values = []
         container_name = '-'.join([ item['metric'][key] for key in metric_names])
         values = [float(value[1])/scale for value in item['values']]
@@ -237,7 +243,7 @@ def extract_prom_json_data(metric_profile, time_stamp):
             curl_cmd = (
             f"oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- "
             f"curl -s 'http://localhost:9090/api/v1/query_range?"
-            f"query={encoded_expr}&start={start}&end={end}&step=30s' | "
+            f"query={encoded_expr}&start={start}&end={end}&step=5s' | "
             f"jq > {entry}#{metric_name}.json"
             )
             query_result = subprocess.run(curl_cmd, capture_output=True, shell=True)
