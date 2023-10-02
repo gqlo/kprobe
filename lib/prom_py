@@ -198,7 +198,7 @@ def check_time_stamp(stamp):
     if (int(stamp[3]) - int(stamp[2])) < 0:
         sys_exit("end time stamp is before start time stamp")
     duration = int(stamp[3]) - int(stamp[2])
-    print(f"Time stamp durtaion: {duration} seconds")
+    print(f"Time stamp durtaion: {stamp[1]} - {duration} seconds")
 
 def read_time_stamps(file_path):
     time_stamp = {}
@@ -266,25 +266,32 @@ def sum_csv_column_by_dir(csv_dir):
         if len(csv_files) == 0:
             print("No csv file is found")
             return
-        column_sum_path = "total_"+re.search(r'[^/]+$', list(csv_files)[0])[0].split("#")[2]
+        metric_name = re.search(r'[^/]+$', list(csv_files)[0])[0].split("#")[2]
+        column_sum_path = "total_" + metric_name
+        usage_type = metric_name.split("_")[0]
+        column_sum_headers = ["pod count", "max-"+ usage_type, "avg-" + usage_type]
+        csv_write_row(column_sum_path, column_sum_headers)
+        all_rows = []
         for file_path in csv_files:
             print(file_path, type(file_path))
             added_col =[]
             max_c = 0
             avg_c = 0
-            # column_sum_path = re.sub(r'[^/\\]*\.csv$',, file_path)
             csv_obj = read_csv_file(file_path)
             for index, row in enumerate(csv_obj):
                 if index == 0:
                     print(f"adding the column values, headers:{row}")
-                    added_col.append(row[4])
+                    added_col.append(int(row[4].split("-")[0]) * 10)
                 else:
                     max_c += float(row[1])
                     avg_c += float(row[2])
             print(f"total max: {max_c}, avg: {avg_c}")
             added_col.append(max_c)
             added_col.append(avg_c)
-            csv_write_row(column_sum_path, added_col)
+            all_rows.append(added_col)
+        all_rows.sort(key=lambda row: row[0])
+        for row in all_rows:
+            csv_write_row(column_sum_path, row)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
