@@ -74,7 +74,7 @@ def validate_csv_file_group(file_glob_obj):
     file_name = re.search(r'[^/]+$', first_path)[0]
     file_attr = file_name.split("#")
     if len(file_attr) != 3:
-        sys_exit("{first_path} does not look right, please double check")
+        sys_exit("{first_path} does not look right, expecting 3 parts: namespace#iteration#metric_name, please double check")
     ns = file_attr[0]
     iterations = file_attr[1]
     metric_name = file_attr[2]
@@ -149,6 +149,13 @@ def json_dir_to_csv(dir_path):
             csv_write_row(csv_file_path, row)
         print(f"Finished writting data into csv file at location: '{csv_file_path}'")
 
+def process_raw_json_obj(json_obj):
+    res = {}
+    result = json_obj['data']["result"]
+    for item in result:
+        res[list(item['metric'].keys())[0]] = [float(value[1]) for value in item['values']]
+    return res
+
 # process a single json file
 def json_file_to_csv(file_path, scale):
     if file_is_readable(file_path):
@@ -172,11 +179,13 @@ def json_file_to_csv(file_path, scale):
     job_type = file_attr[1]
     metric_name = re.sub(r'\..*$', '', file_attr[2])
     csv_write_row(csv_file_path, [metric_type, "Max", "Avg", namespace, job_type, metric_name])
+    column_sum = []
     for item in result:
         if len(item['metric']) == 0:
-            continue
+             continue
         values = []
         container_name = '-'.join([ item['metric'][key] for key in metric_names])
+        print(item)
         values = [float(value[1])/scale for value in item['values']]
         non_zero_values = [value for value in values if value != float(0)]
         if len(non_zero_values) != len(values) or len(non_zero_values) == 0:
@@ -185,7 +194,7 @@ def json_file_to_csv(file_path, scale):
         mean_val = 0.0 if len(non_zero_values) == 0 else sum(non_zero_values)/float(len(non_zero_values))
         row = [container_name, max_val, mean_val]
         csv_write_row(csv_file_path, row)
-    print(f"csv file saved at {csv_file_path}")
+        print(f"csv file saved at {csv_file_path}")
 
 def is_int(num):
     try:
@@ -267,12 +276,67 @@ def sum_csv_column(csv_file_path):
         csv_write_row(column_sum_path, [max_c, avg_c])
     print(f"saving the column of sum at {column_sum_path}")
 
+# return all meta data
+def group_csv_file_paths(csv_files):
+    res = {}
+    for file_path in csv_files:
+        file_attr = re.search(r'[^/]+$', file_path)[0].split("#")
+        namespace = file_attr[0]
+        iter_num = int(file_attr[1].replace("-iterations", ""))
+        metric_name = file_attr[2].replace(".csv", "")
+        if namespace not in res.keys():
+            res[namespace] = { metric_name: [iter_num]}
+        else:
+            if metric_name not in res[namespace].keys():
+                res[namespace][metric_name] = [iter_num]
+            else:
+                res[namespace][metric_name].append(iter_num)
+                res[namespace][metric_name].sort()
+    return res
+
+def sum_multi_ns_csv_column(csv_dir):
+    csv_files = read_csv_files(csv_dir)
+    if len(csv_files) == 0:
+            print("No csv file is found")
+            return
+    group_csv_file_paths(csv_files)
+    structured_file_paths = group_csv_file_paths(csv_files)
+    print(structured_file_paths['clusters-kv-w9-lvm-32g-1'].keys())
+    for namespace in structured_file_paths.keys():
+        for metric_name in structured_file_paths[namespace]:
+            usage_type = metric_name.split("_")[0]
+            column_sum_path = "total_" + namespace + "_" +  metric_name
+            column_sum_headers = ["pod count", "max-"+ usage_type, "avg-" + usage_type]
+            csv_write_row(column_sum_path, column_sum_headers)
+            all_rows = []
+            for iter_num in structured_file_paths[namespace][metric_name]:
+                file_path = f"{namespace}#{iter_num}-iterations#{metric_name}.csv"
+                print(file_path)
+                added_col =[]
+                max_c = 0
+                avg_c = 0
+                csv_obj = read_csv_file(file_path)
+                for n, row in enumerate(csv_obj):
+                    if n == 0:
+                        print(f"adding the column values, headers:{row}")
+                        added_col.append(iter_num * 10)
+                    else:
+                        max_c += float(row[1])
+                        avg_c += float(row[2])
+                print(f"total max: {max_c}, avg: {avg_c}")
+                added_col.append(max_c)
+                added_col.append(avg_c)
+                all_rows.append(added_col)
+            for row in all_rows:
+                csv_write_row(column_sum_path, row)
+
 def sum_csv_column_by_dir(csv_dir):
         csv_files = read_csv_files(csv_dir)
-        validate_csv_file_group(csv_files)
+        # validate_csv_file_group(csv_files)
         if len(csv_files) == 0:
             print("No csv file is found")
             return
+        sys_exit("debugging")
         metric_name = re.search(r'[^/]+$', list(csv_files)[0])[0].split("#")[2]
         column_sum_path = "total_" + metric_name
         usage_type = metric_name.split("_")[0]
@@ -322,4 +386,4 @@ if __name__ == '__main__':
     elif args.csv:
         sum_csv_column(args.csv)
     elif args.dir:
-        sum_csv_column_by_dir(args.dir)
+        sum_multi_ns_csv_column(args.dir)
