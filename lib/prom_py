@@ -149,6 +149,7 @@ def json_dir_to_csv(dir_path):
             csv_write_row(csv_file_path, row)
         print(f"Finished writting data into csv file at location: '{csv_file_path}'")
 
+# structure a raw json object 
 def process_raw_json_obj(json_obj):
     res = {}
     result = json_obj['data']["result"]
@@ -156,8 +157,8 @@ def process_raw_json_obj(json_obj):
         res[list(item['metric'].keys())[0]] = [float(value[1]) for value in item['values']]
     return res
 
-# process a single json file
-def json_file_to_csv(file_path, scale):
+# Extract the max and average value of each container or pod as csv file
+def extract_max_avg_value(file_path, scale):
     if file_is_readable(file_path):
         json_obj = read_json_file(file_path)
     check_meta_data(json_obj)
@@ -276,7 +277,7 @@ def sum_csv_column(csv_file_path):
         csv_write_row(column_sum_path, [max_c, avg_c])
     print(f"saving the column of sum at {column_sum_path}")
 
-# return all meta data
+# structure the list of csv file in the format of {namespace: {metric_name: [iteration_number]}}
 def group_csv_file_paths(csv_files):
     res = {}
     for file_path in csv_files:
@@ -294,7 +295,9 @@ def group_csv_file_paths(csv_files):
                 res[namespace][metric_name].sort()
     return res
 
-def sum_multi_ns_csv_column(csv_dir):
+# aggregate csv data from multiple namespaces and queries
+# save the final output as "total_" + namespace + "_" +  metric_name + ".csv"
+def aggregate_multi_ns_csv(csv_dir):
     csv_files = read_csv_files(csv_dir)
     if len(csv_files) == 0:
             print("No csv file is found")
@@ -305,9 +308,9 @@ def sum_multi_ns_csv_column(csv_dir):
     for namespace in structured_file_paths.keys():
         for metric_name in structured_file_paths[namespace]:
             usage_type = metric_name.split("_")[0]
-            column_sum_path = "total_" + namespace + "_" +  metric_name
-            column_sum_headers = ["pod count", "max-"+ usage_type, "avg-" + usage_type]
-            csv_write_row(column_sum_path, column_sum_headers)
+            aggregated_csv_path = "total_" + namespace + "_" +  metric_name + ".csv"
+            csv_headers = ["pod count", "max-"+ usage_type, "avg-" + usage_type]
+            csv_write_row(aggregated_csv_path, csv_headers)
             all_rows = []
             for iter_num in structured_file_paths[namespace][metric_name]:
                 file_path = f"{namespace}#{iter_num}-iterations#{metric_name}.csv"
@@ -328,7 +331,7 @@ def sum_multi_ns_csv_column(csv_dir):
                 added_col.append(avg_c)
                 all_rows.append(added_col)
             for row in all_rows:
-                csv_write_row(column_sum_path, row)
+                csv_write_row(aggregated_csv_path, row)
 
 def sum_csv_column_by_dir(csv_dir):
         csv_files = read_csv_files(csv_dir)
@@ -367,18 +370,18 @@ def sum_csv_column_by_dir(csv_dir):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
     parser.add_argument('-s', '--scale', type=int, default=1, help="the scale factor number to be divided")
-    parser.add_argument('-j', '--file', type=str, help="json file path, extract data points as csv format")
+    parser.add_argument('-j', '--file', type=str, help="json file path, extract average and max data point as csv format")
     parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
     parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
     parser.add_argument('-c', '--csv', type=str, help="add csv column value")
-    parser.add_argument('-d', '--dir', type=str, help="add csv column of multile files")
+    parser.add_argument('-d', '--dir', type=str, help="aggerate multiple csv files from one or more namespaces")
 
     args = parser.parse_args()
     if bool(args.timestamp) != bool(args.profile):
         parser.error("both --timestamp and --profile file path must be passed together")
 
     if args.file:
-        json_file_to_csv(args.file, args.scale)
+        extract_max_avg_value(args.file, args.scale)
     elif args.profile or args.timestamp:
         time_stamp = read_time_stamps(args.timestamp)
         metric_profile = read_yaml(args.profile)
@@ -386,4 +389,4 @@ if __name__ == '__main__':
     elif args.csv:
         sum_csv_column(args.csv)
     elif args.dir:
-        sum_multi_ns_csv_column(args.dir)
+        aggregate_multi_ns_csv(args.dir)
