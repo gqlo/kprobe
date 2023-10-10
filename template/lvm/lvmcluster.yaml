@@ -2,6 +2,7 @@ apiVersion: lvm.topolvm.io/v1alpha1
 kind: LVMCluster
 metadata:
   name: nvme-lvmcluster
+  namespace: openshift-storage
 spec:
   storage:
     deviceClasses:
@@ -19,7 +20,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-              - worker002-1029p
               - worker003-1029p
               - worker004-1029p
+              - worker005-1029p
 
