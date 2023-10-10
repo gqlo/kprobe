@@ -17,6 +17,10 @@ PARALLEL=false                                          # determine if it's a pa
 DEBUG=false                                             # determine if it's running in debug mode
 OC=$(command -v oc)                                     # check if oc cli exists
 HS=$(command -v hypershift)                             # check if hypershift cli exits
+HCP=$(command -v hcp)                                   # check if hcp cli exits, for ocp >= 4.14
+BC=$(command -v bc)                                     # check if bc utility is installed
+OCP_VER=""                                              # ocp version
+H_CMD=""                                                # hypershift or hcp command
 URLENCODE=$(command -v urlencode)                       # check if urlencode exits
 declare -a timing_phase=()                              # array to store timings of each phase
 declare -A PROM_METRIC=()                               # store metirc name and query
@@ -44,6 +48,8 @@ Usage: [Options] [name]
         -l  bool        Flag style option, indicates if create tenant cluster in parellel or sequentially,
                         deafult to: $PARALLEL.
         -n  int         Number of tenant clusters to create, default to $CLUSTER_NUM.
+        -v  bool        Flag sytle option, indicates if executing in debug mode. If so print out the full hypershift
+                        cli command with its parameters without creating the actual objects
         -m  name        Calculate the pod count of mgmt and hcp node. Get detailed info on running and
                         completed pod count.
 EOF
@@ -54,6 +60,21 @@ EOF
 die() {
     printf '%s\n' "${@:-$usage}" >&2
     exit 1
+}
+
+# use hcp cli starting from ocp 4.14
+set_hypershift_cli() {
+    OCP_VER=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' | awk -F "." '{print $1"."$2}')
+    local new_mce=$(echo "$OCP_VER > 4.13" | bc)
+    local h_cli=""
+
+    if [[ "$new_mce" -eq 1 ]]; then
+        h_cli="hcp"
+    else
+        h_cli="hypershift"
+    fi
+
+    H_CMD=${h_cli:-"hcp"}
 }
 
 # none of the functions below use global vars
@@ -87,10 +108,10 @@ create_cluster() {
         printf '%s\n' "$div $cluster $div"
         SECONDS=0
         if [[ $DEBUG == true ]]; then
-            echo "hypershift create cluster kubevirt $cluster_param"
+            echo "$H_CMD create cluster kubevirt $cluster_param"
             return
         else
-            hypershift create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
+            $H_CMD create cluster kubevirt $(echo "$cluster_param"| sed 's/"//g')
         fi
         create_secs=$SECONDS
         echo "create_secs=$create_secs"
@@ -150,27 +171,27 @@ get_domain() {
 
 destory_cluster() {
     local name="$1"
-    if [[ -z "$HS" ]]; then
-        die "HyperShift cli is not installed"
+    if [[ -z "$HS" ]] || [[ -z "$HCP" ]]; then
+        die "$H_CMD cli is not installed"
     fi
     if [[ "$1" == "--all" ]]; then
         for cluster in $(oc get hc -A | awk  'NR>1 {print $2}'); do
         {
             if [[ $DEBUG == true ]]; then
-                echo "hypershift destroy cluster kubevirt --name $cluster"
+                echo "$H_CMD destroy cluster kubevirt --name $cluster"
                 return
             else:
-                hypershift destroy cluster kubevirt --name "$cluster"
+                $H_CMD destroy cluster kubevirt --name "$cluster"
             fi
             [[ -f "$dir_conf/$cluster" ]] && sudo rm "$dir_conf/$cluster"
         } &
         done
     else
         if [[ $DEBUG == true ]]; then
-            echo "hypershift destroy cluster kubevirt --name $cluster"
+            echo "$H_CMD destroy cluster kubevirt --name $cluster"
             return
         else
-            hypershift destroy cluster kubevirt --name "$name"
+            $H_CMD destroy cluster kubevirt --name "$name"
         fi
         [[ -f "$$dir_conf/$name" ]] && sudo rm "$dir_conf/$name"
     fi
@@ -205,7 +226,7 @@ wait_available() {
 
 create_kubeconf() {
     local name="$1"
-    hypershift create kubeconfig --name="$name" > "$dir_conf/$name"
+    $H_CMD create kubeconfig --name="$name" > "$dir_conf/$name"
 }
 
 get_nodeport() {
@@ -524,6 +545,16 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
+if [[ -z "$HS" ]] || [[ -z "$HCP" ]]; then
+    die "hypershift or hcp cli is not installed"
+fi
+
+if [[ -z "$BC" ]]; then
+    die "bc utility is not installed, run sudo yum install bc if you are on Red Hat distros"
+fi
+
+set_hypershift_cli
+
 while getopts "hf:ln:c:d:p:t:m:v" opt; do
     case "$opt" in
         h) help_msg                                 ;;
@@ -540,6 +571,3 @@ while getopts "hf:ln:c:d:p:t:m:v" opt; do
     esac
 done
 
-if [[ -z "$HS" ]]; then
-    die "hypershift cli is not installed"
-fi
