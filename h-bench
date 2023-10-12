@@ -180,7 +180,7 @@ destory_cluster() {
             if [[ $DEBUG == true ]]; then
                 echo "$H_CMD destroy cluster kubevirt --name $cluster"
                 return
-            else:
+            else
                 $H_CMD destroy cluster kubevirt --name "$cluster"
             fi
             [[ -f "$dir_conf/$cluster" ]] && sudo rm "$dir_conf/$cluster"
