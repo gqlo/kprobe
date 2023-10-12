@@ -383,7 +383,7 @@ prom_extract() {
             fi
             QUERY_EXPRESSION=$(urlencode $QUERY_EXPRESSION)
             oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
-            curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=30s" \
+            curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=5s" \
             | jq > "$dir_out/$job_name-$namespace-$metric_name".json
             echo finished extracting metrics: "$dir_out/$job_name-$namespace-$metric_name".json
         done
