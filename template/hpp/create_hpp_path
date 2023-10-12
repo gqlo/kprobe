@@ -1,0 +1,18 @@
+#! /bin/bash
+
+echo "cleaning up hpp path"
+for i in {000..027}; do
+    ssh -o StrictHostKeyChecking=no core@worker$i-1029p "lsblk | grep hpp && echo 'path found'; sudo umount /mnt/hpp-pool; sudo rm -r /mnt/hpp-pool"
+done
+
+echo "creating hpp path"
+# avoid hcp nodes
+nodes="000 001"
+for i in $nodes; do
+    ssh -o StrictHostKeyChecking=no core@worker$i-1029p "hostname && sudo mkfs.ext4 /dev/nvme0n1 && sudo mkdir -p /mnt/hpp-pool/ && sudo mount /dev/nvme0n1 /mnt/hpp-pool"
+done
+
+for i in {006..025}; do
+    ssh -o StrictHostKeyChecking=no core@worker$i-1029p "hostname && sudo mkfs.ext4 /dev/nvme0n1 && sudo mkdir -p /mnt/hpp-pool/ && sudo mount /dev/nvme0n1 /mnt/hpp-pool"
+done
+

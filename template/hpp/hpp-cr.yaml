@@ -6,7 +6,7 @@ spec:
   imagePullPolicy: IfNotPresent
   storagePools:
   - name: hpp-nvmes
-    path: "/var/mnt/nvme-hpp"
+    path: "/mnt/hpp-pool"
   workload:
     nodeSelector:
       kubernetes.io/workers: "vm-workload"
