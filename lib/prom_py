@@ -164,6 +164,8 @@ def extract_max_avg_value(file_path, scale):
     check_meta_data(json_obj)
     result = json_obj['data']["result"]
     csv_file_path=re.sub(r"\.json$", ".csv", file_path)
+    if "mem" in file_path.lower() or "etcd_db" in file_path.lower():
+        scale = 1073741824
     item = result[0]
     metric_names = list(item['metric'].keys())
     if len(metric_names) < 1:
@@ -251,7 +253,7 @@ def extract_prom_json_data(metric_profile, time_stamp):
             encoded_result = subprocess.run(urlencode_cmd, capture_output=True, text="True")
             encoded_expr = encoded_result.stdout.replace('\n', '').replace('\r', '')
             curl_cmd = (
-            f"oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- "
+            f"oc exec -n openshift-monitoring -c prometheus prometheus-k8s-1 -- "
             f"curl -s 'http://localhost:9090/api/v1/query_range?"
             f"query={encoded_expr}&start={start}&end={end}&step=5s' | "
             f"jq > {entry}#{metric_name}.json"
@@ -304,7 +306,6 @@ def aggregate_multi_ns_csv(csv_dir):
             return
     group_csv_file_paths(csv_files)
     structured_file_paths = group_csv_file_paths(csv_files)
-    print(structured_file_paths['clusters-kv-w9-lvm-32g-1'].keys())
     for namespace in structured_file_paths.keys():
         for metric_name in structured_file_paths[namespace]:
             usage_type = metric_name.split("_")[0]
