@@ -12,7 +12,8 @@ conf_file="$HOME/hypershift/config/.$prog.conf"         # config file name
 start_time=$(date +%s)                                  # script start time
 time="$(date -d "@$start_time" '+%F_%T')"               # time string
 div="$(printf '=%.s' {1..40})"                          # divider line string
-param_string=""                                         # parameter string
+HCP_PARAM=""                                            # parameter string for hcp or hypershift command
+KUBE_BURNER_PARAM=""                                    # parameter string for kubeburner command
 PARALLEL=false                                          # determine if it's a parallel cluster creation
 DEBUG=false                                             # determine if it's running in debug mode
 OC=$(command -v oc)                                     # check if oc cli exists
@@ -81,7 +82,7 @@ set_hypershift_cli() {
 # so all input is passed as arguments
 process_option() {
     local line="$1"
-    param_string+="--$(echo "$line" | sed 's/=.*//') $(echo "$line" | sed 's/[^=]*=//') "
+    HCP_PARAM+="--$(echo "$line" | sed 's/=.*//') $(echo "$line" | sed 's/[^=]*=//') "
 }
 
 process_job_file() {
@@ -132,15 +133,15 @@ create_multi_clusters() {
     local n=1
     local i=1
 
-    if [[ ! $param_string =~ "--name" ]]; then
-        param_string+="--name $cluster_name"
+    if [[ ! $HCP_PARAM =~ "--name" ]]; then
+        HCP_PARAM+="--name $cluster_name"
     fi
 
     echo "CLUSTER_NUM $CLUSTER_NUM"
     if [[ $PARALLEL == true ]]; then
        for ((n=1; n<CLUSTER_NUM; n++)); do
         {
-            local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
+            local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "Parallel: $cluster_param"
             create_cluster "$cluster_param" "$cluster_name"
@@ -150,7 +151,7 @@ create_multi_clusters() {
        wait
     else
        for ((i=1; i<CLUSTER_NUM; i++)); do
-            local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
+            local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
             create_cluster "$cluster_param" "$cluster_name"
@@ -158,7 +159,7 @@ create_multi_clusters() {
     fi
 
     if [[ $CLUSTER_NUM == 1 ]]; then
-        local cluster_param=$(echo $param_string | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&/")
+        local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&/")
         local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
         create_cluster "$cluster_param" "$cluster_name"
     fi
@@ -171,7 +172,7 @@ get_domain() {
 
 destory_cluster() {
     local name="$1"
-    if [[ -z "$HS" ]] || [[ -z "$HCP" ]]; then
+    if [[ -z "$HS" ]] && [[ -z "$HCP" ]]; then
         die "$H_CMD cli is not installed"
     fi
     if [[ "$1" == "--all" ]]; then
@@ -257,7 +258,7 @@ wait_monitoring_ready() {
     local timeout="$3"
     local exporter_num=0
     let timeout+=$(date +%s)
-    node_replica=$(echo "$param_string" | sed -n 's/.*--node-pool-replicas \([0-9]\+\).*/\1/p')
+    node_replica=$(echo "$HCP_PARAM" | sed -n 's/.*--node-pool-replicas \([0-9]\+\).*/\1/p')
     while ((exporter_num<node_replica)); do
         exporter_num=$(oc --kubeconfig "$kube_conf" get pod -n openshift-monitoring | grep node-exporter.*Running | wc -l)
         echo "time now $(date +%s) and timeout: $timeout"
@@ -545,7 +546,7 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
-if [[ -z "$HS" ]] || [[ -z "$HCP" ]]; then
+if [[ -z "$HS" ]] && [[ -z "$HCP" ]]; then
     die "hypershift or hcp cli is not installed"
 fi
 
