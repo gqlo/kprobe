@@ -57,6 +57,20 @@ Usage: [Options] [name]
 EOF
 }
 
+# export environment varaibles from file
+export_env_vars() {
+    env_file="./env_vars/vars"
+    if [[ ! -f "$env_file" && ! -r "$env_file" ]]; then
+        die "$env_file does not exist or not readable"
+    fi
+
+    while read -r line; do
+        if [[ ! -z "$line" && ! $line =~ ^# ]]; then
+            export "$line"
+        fi
+    done < "$env_file"
+}
+
 # die fn takes an optional error message to display
 # if missing, the error message defaults to the usage string
 die() {
@@ -515,6 +529,7 @@ log_creation_phase() {
     echo "timing phase array: ${timing_phase[@]}"
 }
 
+#-- installation  --------------------------------------------------------------
 install_hcp_cli() {
     echo "downloading hcp cli..."
     cli_url=$(oc get ConsoleCLIDownload hcp-cli-download -o json | jq -r '.spec.links[] | select(.text | test("Linux for x86_64")).href')
@@ -528,6 +543,7 @@ install_hcp_cli() {
         echo "hcp cli is installed successfully"
     fi
 }
+
 #-- configuration --------------------------------------------------------------
 # create a config file if none exists
 if [[ ! -e "$conf_file" ]]; then
