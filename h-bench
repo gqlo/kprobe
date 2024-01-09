@@ -22,7 +22,6 @@ HCP=$(command -v hcp)                                   # check if hcp cli exits
 BC=$(command -v bc)                                     # check if bc utility is installed
 OCP_VER=""                                              # ocp version
 H_CMD=""                                                # hypershift or hcp command
-URLENCODE=$(command -v urlencode)                       # check if urlencode exits
 declare -a timing_phase=()                              # array to store timings of each phase
 declare -A PROM_METRIC=()                               # store metirc name and query
 declare -A JOBS=()                                      # store job names start and end time stamps
@@ -139,7 +138,7 @@ create_multi_clusters() {
 
     echo "CLUSTER_NUM $CLUSTER_NUM"
     if [[ $PARALLEL == true ]]; then
-       for ((n=1; n<CLUSTER_NUM; n++)); do
+       for ((n=1; n<=CLUSTER_NUM; n++)); do
         {
             local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
@@ -150,7 +149,7 @@ create_multi_clusters() {
        done
        wait
     else
-       for ((i=1; i<CLUSTER_NUM; i++)); do
+       for ((i=1; i<=CLUSTER_NUM; i++)); do
             local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
@@ -326,15 +325,10 @@ parse_metric_profile() {
         die "metric profile does not exits or can not be read"
     fi
 
-    if [[ -z $URLENCODE ]]; then
-        die "urlencode cli does not exist"
-    fi
-
     while IFS= read -r m_name; do
         read -r m_query
             local m_name=$(echo $m_name | sed 's/://')
             local m_query=$(echo $m_query | sed 's/^ *- //g')
-            # encoded_query=$(urlencode $m_query)
             PROM_METRIC[$m_name]=$m_query
     done < "$metric_profile"
 }
@@ -382,10 +376,12 @@ prom_extract() {
             if grep -q "filter" <<< "$QUERY_EXPRESSION"; then
                 QUERY_EXPRESSION=${QUERY_EXPRESSION/\$filter/"namespace=\"$namespace\""}
             fi
-            QUERY_EXPRESSION=$(urlencode $QUERY_EXPRESSION)
-            oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- \
-            curl -s "http://localhost:9090/api/v1/query_range?query=${QUERY_EXPRESSION}&start=${start}&end=${end}&step=5s" \
-            | jq > "$dir_out/$job_name-$namespace-$metric_name".json
+            oc exec -n openshift-monitoring -c prometheus prometheus-k8s-0 -- curl -s \
+                --data-urlencode "query=${QUERY_EXPRESSION}" \
+                --data-urlencode "start=${start}" \
+                --data-urlencode "end=${end}" \
+                --data-urlencode "step=5s" \
+                http://localhost:9090/api/v1/query_range | jq > "$dir_out/$job_name-$namespace-$metric_name".json
             echo finished extracting metrics: "$dir_out/$job_name-$namespace-$metric_name".json
         done
     done
@@ -546,6 +542,11 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
+if [[ ! -d "$dir_out" ]]; then
+    echo "$dir_out does not exist, creating one.."
+    mkdir -p "$dir_out"
+fi
+
 if [[ -z "$HS" ]] && [[ -z "$HCP" ]]; then
     die "hypershift or hcp cli is not installed"
 fi
