@@ -138,7 +138,7 @@ create_multi_clusters() {
 
     echo "CLUSTER_NUM $CLUSTER_NUM"
     if [[ $PARALLEL == true ]]; then
-       for ((n=1; n<CLUSTER_NUM; n++)); do
+       for ((n=1; n<=CLUSTER_NUM; n++)); do
         {
             local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$n/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
@@ -149,7 +149,7 @@ create_multi_clusters() {
        done
        wait
     else
-       for ((i=1; i<CLUSTER_NUM; i++)); do
+       for ((i=1; i<=CLUSTER_NUM; i++)); do
             local cluster_param=$(echo $HCP_PARAM | sed  -E "s/( *)--name[[:space:]]+([^ ]+)/\1&-$i/")
             local cluster_name=$(echo $cluster_param | sed -E "s/.*--name ([^ ]+).*/\1/")
             echo "seq creation: $cluster_param $cluster_name"
@@ -542,6 +542,11 @@ fi
 source "$conf_file"
 
 #-- Top Level -----------------------------------------------------------------
+if [[ ! -d "$dir_out" ]]; then
+    echo "$dir_out does not exist, creating one.."
+    mkdir -p "$dir_out"
+fi
+
 if [[ -z "$HS" ]] && [[ -z "$HCP" ]]; then
     die "hypershift or hcp cli is not installed"
 fi
