@@ -4,6 +4,7 @@
 
 # set scrict mode
 # set -Eeuo pipefail
+set -o pipefail
 # some global constants
 cluster_name=$(echo $RANDOM | md5sum | head -c 10)      # random string as default cluster name
 prog="${0##*/}"                                         # program name
@@ -53,6 +54,20 @@ Usage: [Options] [name]
         -m  name        Calculate the pod count of mgmt and hcp node. Get detailed info on running and
                         completed pod count.
 EOF
+}
+
+# export environment varaibles from file
+export_env_vars() {
+    env_file="./env_vars/vars"
+    if [[ ! -f "$env_file" && ! -r "$env_file" ]]; then
+        die "$env_file does not exist or not readable"
+    fi
+
+    while read -r line; do
+        if [[ ! -z "$line" && ! $line =~ ^# ]]; then
+            export "$line"
+        fi
+    done < "$env_file"
 }
 
 # die fn takes an optional error message to display
@@ -510,6 +525,21 @@ log_creation_phase() {
     echo "timing phase array: ${timing_phase[@]}"
 }
 
+#-- installation  --------------------------------------------------------------
+install_hcp_cli() {
+    echo "downloading hcp cli..."
+    cli_url=$(oc get ConsoleCLIDownload hcp-cli-download -o json | jq -r '.spec.links[] | select(.text | test("Linux for x86_64")).href')
+    curl -k --output /tmp/hcp.tar.gz ${cli_url}
+    echo "extracting hcp binary to /usr/local/bin"
+    tar -xvf /tmp/hcp.tar.gz -C /usr/local/bin
+    HCP=$(command -v hcp)
+    if [[ -z "$HCP" ]]; then
+        die "failed to install hcp cli"
+    else
+        echo "hcp cli is installed successfully"
+    fi
+}
+
 #-- configuration --------------------------------------------------------------
 # create a config file if none exists
 if [[ ! -e "$conf_file" ]]; then
@@ -548,7 +578,8 @@ if [[ ! -d "$dir_out" ]]; then
 fi
 
 if [[ -z "$HS" ]] && [[ -z "$HCP" ]]; then
-    die "hypershift or hcp cli is not installed"
+    echo "hcp cli is not installed"
+    install_hcp_cli
 fi
 
 if [[ -z "$BC" ]]; then
