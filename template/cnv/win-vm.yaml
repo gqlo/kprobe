@@ -25,9 +25,19 @@ spec:
   template:
     metadata:
       labels:
-        kubevirt.io/domain: win11
+        kubevirt.io/domain: win11-2
     spec:
       domain:
+        clock:
+          timer:
+            hpet:
+              present: false
+            hyperv: {}
+            pit:
+              tickPolicy: delay
+            rtc:
+              tickPolicy: catchup
+          utc: {}
         cpu:
           cores: 1
           sockets: 2
@@ -39,12 +49,30 @@ spec:
             name: rootdisk
           interfaces:
           - masquerade: {}
-            model: e1000
+            model: virtio
             name: default
-          rng: {}
+          networkInterfaceMultiqueue: true
+          tpm: {}
         features:
           smm:
             enabled: true
+          acpi: {}
+          apic: {}
+          hyperv:
+            frequencies: {}
+            ipi: {}
+            reenlightenment: {}
+            relaxed: {}
+            reset: {}
+            runtime: {}
+            spinlocks:
+              spinlocks: 8191
+            synic: {}
+            synictimer:
+              direct: {}
+            tlbflush: {}
+            vapic: {}
+            vpindex: {}
         firmware:
           bootloader:
             efi:
