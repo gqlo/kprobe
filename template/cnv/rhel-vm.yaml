@@ -1,13 +1,13 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: rhel9-2
+  name: rhel9-1
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: rhel9-2
+      name: rhel9-1
     spec:
       pvc:
         accessModes:
@@ -39,7 +39,9 @@ spec:
             name: rootdisk
           interfaces:
           - masquerade: {}
+            model: virtio
             name: default
+          networkInterfaceMultiqueue: true
           rng: {}
         features:
           smm:
@@ -53,5 +55,5 @@ spec:
         pod: {}
       volumes:
       - dataVolume:
-          name: rhel9-2
+          name: rhel9-1
         name: rootdisk
