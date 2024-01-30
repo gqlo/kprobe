@@ -1,13 +1,13 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: win11-2
+  name: win11-placeholder
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: win11-2
+      name: win11-placeholder
     spec:
       pvc:
         accessModes:
@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       labels:
-        kubevirt.io/domain: win11-2
+        kubevirt.io/domain: win11
     spec:
       domain:
         clock:
@@ -39,9 +39,9 @@ spec:
               tickPolicy: catchup
           utc: {}
         cpu:
-          cores: 1
+          cores: 8
           sockets: 2
-          threads: 1
+          threads: 2
         devices:
           disks:
           - disk:
@@ -81,12 +81,12 @@ spec:
           type: q35
         resources:
           requests:
-            memory: 8Gi
+            memory: 64Gi
       evictionStrategy: LiveMigrate
       networks:
       - name: default
         pod: {}
       volumes:
       - dataVolume:
-          name: win11-2
+          name: win11-placeholder
         name: rootdisk
