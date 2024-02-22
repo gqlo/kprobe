@@ -1,0 +1,11 @@
+[Unit]
+Description=Extract systemd-analyze data when default Target is Reached
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/true
+ExecStart=/usr/local/bin/multiuser-timestamp.sh
+
+[Install]
+WantedBy=multi-user.target
