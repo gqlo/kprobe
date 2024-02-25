@@ -1,0 +1,11 @@
+[Unit]
+Description=Promethus Database Mount
+
+[Mount]
+What=/dev/disk/by-uuid/89e02fd9-edbd-4d93-aebe-168039feb545
+Where=/var/promdb
+Type=ext4
+Options=defaults
+
+[Install]
+WantedBy=multi-user.target
