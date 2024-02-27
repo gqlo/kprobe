@@ -1,0 +1,30 @@
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: "multus-br"
+spec:
+  desiredState:
+    interfaces:
+    - name: "multus-br"
+      description: Linux bridge on secondary nic
+      type: linux-bridge
+      state: up
+      bridge:
+        options:
+          stp:
+            enabled: false
+        port:
+        - name: ens1f0
+      ipv4:
+        dhcp: true
+        enabled: true
+        auto-dns: false
+    dns-resolver:
+      config:
+        search:
+        - example.com
+        - example.org
+        server:
+        - 8.8.8.8
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""

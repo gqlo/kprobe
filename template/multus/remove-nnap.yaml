@@ -1,0 +1,15 @@
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: "rm-multus-br"
+spec:
+  desiredState:
+    interfaces:
+    - name: multus-br
+      type: linux-bridge
+      state: absent
+    - name: ens1f0
+      type: ethernet
+      state: up
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""

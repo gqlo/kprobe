@@ -16,4 +16,4 @@ data:
           storageClassName: promdb-pv 
           resources:
             requests:
-              storage: 894Gi
+              storage: 2900Gi
