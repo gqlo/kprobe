@@ -6,6 +6,7 @@ vmi_running_path="/root/cnv/data/vmi_running_time.csv"
 # batch create 100 VMs at a time
 batch_create_vm() {
    local vm_num="$1"
+   local i
    for ((i="$vm_num"; i<vm_num+100; i++)); do
       sed "s/placeholder/$i/g" "$vm_template" | oc create -f - &
    done
@@ -13,6 +14,7 @@ batch_create_vm() {
 
 batch_start_vm() {
    local vm_num="$1"
+   local i
    for ((i="$vm_num"; i<vm_num+100; i++)); do
       virtctl start rhel9-$i &
    done
@@ -34,10 +36,12 @@ count_vmi_line() {
 
 wait_dv_clone() {
    local vm_num="$1"
-   local start=$vm_num
+   local start="$vm_num"
    local end=$((vm_num + 100))
+   echo "wait dv clone start=$start, end=$end"
    local current_dv_num=$(count_dv_line "$start" "$end")
    while [[ $current_dv_num -ne 100 ]]; do
+     echo "wait dv clone start=$start, end=$end"
      current_dv_num=$(count_dv_line "$start" "$end")
      echo "current completed dv clone: $current_dv_num"
      sleep 5
@@ -92,6 +96,7 @@ sync_clock() {
 deploy_vm() {
 	local start="$1"
 	local end="$2"
+   local i
 	for ((i="$start"; i<$end; i=i+100)); do
 		local start_time=$(date +%s)
 		batch_create_vm "$i"
@@ -105,6 +110,7 @@ deploy_vm() {
 start_vm() {
 	local start="$1"
 	local end="$2"
+   local i
 	for ((i="$start"; i<"$end"; i=i+100)); do
 		local start_time=$(date +%s)
 		batch_start_vm "$i"
@@ -115,3 +121,4 @@ start_vm() {
    done
 }
 
+deploy_vm 1 6001
