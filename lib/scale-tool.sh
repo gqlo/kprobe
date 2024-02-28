@@ -67,18 +67,26 @@ delete_all_vm() {
 }
 
 clean_odf_disk() {
-  node_list="$1"
-  device_path="$2"
-  for node in "$node_list"; do
-    oc debug node/"$node" -- chroot /host /bin/bash -c \
+  local node="$1"
+  local device_path="$2"
+  oc debug node/"$node" -- chroot /host /bin/bash -c \
     "sudo dd if=/dev/zero of=$device_path bs=1M count=100 && \
     echo 'dd command succeeded' || { echo 'dd command failed on node $node'; exit 1; } && \
     sudo wipefs -a $device_path && \
     echo 'wipefs command succeeded' || { echo 'wipefs command failed on node $node'; exit 1; } && \
     sudo rm -rf /mnt/local-storage && \
-    echo 'rm command succeeded' || { echo 'rm command failed on node $node'; exit 1; }"
-  done
+    echo 'rm command succeeded' || { echo 'rm command failed on node $node'; exit 1; }" 
+}
 
+sync_clock() {
+   local node="$1"
+   oc debug node/"$node" -- chroot /host /bin/bash -c \
+     "setenforce 0 && \
+      echo 'setenforce to disable selinux succeeded' || { echo 'setenforce to disable selinux failed on node $node'; exit 1; } && \
+      chronyc -a makestep && \
+      echo 'chronyc cmd succeeded' || { echo 'chronyc failed on node $node'; exit 1; } && \
+      setenforce 1 && \
+      echo 'setenforce to enable selinux succeeded' || { echo 'setenforce to enable selinux failed on node $node'; exit 1; }"
 }
 
 deploy_vm() {
@@ -106,5 +114,4 @@ start_vm() {
 		echo "$i-$((i+99)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vmi_running_path"
    done
 }
-
 
