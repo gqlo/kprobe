@@ -39,36 +39,38 @@ wait_dv_clone() {
    local vm_num="$1"
    local start="$vm_num"
    local end=$((vm_num + batch_num))
-   local timeout=1800
+   local timeout=$((batch_num*9)) # on average each dv clone takes 9 seconds
    echo "wait dv clone start=$start, end=$end"
    local current_dv_num=$(count_dv_line "$start" "$end")
    while [[ $current_dv_num -ne $batch_num ]]; do
-     if [[ "$timeout" -lt 10 ]]; then
-         break
+     if [[ "$timeout" -lt 5 ]]; then
+         return 1
      fi
      timeout=$((timeout - 5 ))
      echo "wait dv clone start=$start, end=$end"
      current_dv_num=$(count_dv_line "$start" "$end")
-     echo "current completed dv clone: $current_dv_num"
+     echo "current completed dv clone: $current_dv_num, timeout: $timeout/$((batch_num*9))"
      sleep 5
    done
+   return 0
 }
 
 wait_vm_running() {
    local vm_num="$1"
-   local timeout=360
+   local timeout="$batch_num" # On average each vmi start in 0.4 seconds, make it 1 to be safe"
    local start=$vm_num
    local end=$((vm_num + batch_num))
    local current_vmi_num=$(count_vmi_line "$start" "$end")
    while [[ "$current_vmi_num" -ne $batch_num ]]; do
-      if [[ "$timeout" -lt 10 ]]; then
-            break
+      if [[ "$timeout" -lt 5 ]]; then
+            return 1
       fi
    current_vmi_num=$(count_vmi_line "$start" "$end")
-   echo "current running vmi: $current_vmi_num"
+   echo "current running vmi: $current_vmi_num timeout: $timeout/$batch_num"
    sleep 5
    timeout=$((timeout - 5 ))
    done
+   return 0
 }
 
 
@@ -107,9 +109,14 @@ deploy_vm() {
 		local start_time=$(date +%s)
 		batch_create_vm "$i"
 		wait_dv_clone "$i"
+      status=$?
 		local end_time=$(date +%s)
-		echo "batch number $i, completed in $((end_time - start_time))"
-		echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vm_deployment_path"
+      if [[ $status eq 1 ]]; then
+         echo "$i-$((i+batch_num-1)), vm deployment timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vm_deployment_path"
+      elif [[ $status eq 0 ]]; then
+		   echo "batch number $i, completed in $((end_time - start_time))"
+         echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vm_deployment_path"
+      fi
 	done
 }
 
@@ -121,9 +128,14 @@ start_vm() {
 		local start_time=$(date +%s)
 		batch_start_vm "$i"
 		wait_vm_running "$i"
-		local end_time=$(date +%s)
-		echo "batch number $i, vmi start running in $((end_time - start_time))"
-		echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vmi_running_path"
+      status=$?
+      local end_time=$(date +%s)
+      if [[ $status eq 1 ]]; then
+         echo "$i-$((i+batch_num-1)), vmi start timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_running_path"
+      elif [[ $status eq 0 ]]; then
+		   echo "batch number $i, vmi start running in $((end_time - start_time))"
+		   echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_running_path"
+      fi
    done
 }
 
