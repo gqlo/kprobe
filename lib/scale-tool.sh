@@ -2,12 +2,13 @@
 vm_template="/root/h-bench/template/cnv/vm.yaml"
 vm_deployment_path="/root/cnv/data/batch_completed_time.csv"
 vmi_running_path="/root/cnv/data/vmi_running_time.csv"
+batch_num=1000
 
 # batch create 100 VMs at a time
 batch_create_vm() {
    local vm_num="$1"
    local i
-   for ((i="$vm_num"; i<vm_num+100; i++)); do
+   for ((i="$vm_num"; i<vm_num+batch_num; i++)); do
       sed "s/placeholder/$i/g" "$vm_template" | oc create -f - &
    done
 }
@@ -15,7 +16,7 @@ batch_create_vm() {
 batch_start_vm() {
    local vm_num="$1"
    local i
-   for ((i="$vm_num"; i<vm_num+100; i++)); do
+   for ((i="$vm_num"; i<vm_num+batch_num; i++)); do
       virtctl start rhel9-$i &
    done
 }
@@ -37,10 +38,15 @@ count_vmi_line() {
 wait_dv_clone() {
    local vm_num="$1"
    local start="$vm_num"
-   local end=$((vm_num + 100))
+   local end=$((vm_num + batch_num))
+   local timeout=1800
    echo "wait dv clone start=$start, end=$end"
    local current_dv_num=$(count_dv_line "$start" "$end")
-   while [[ $current_dv_num -ne 100 ]]; do
+   while [[ $current_dv_num -ne $batch_num ]]; do
+     if [[ "$timeout" -lt 10 ]]; then
+         break
+     fi
+     timeout=$((timeout - 5 ))
      echo "wait dv clone start=$start, end=$end"
      current_dv_num=$(count_dv_line "$start" "$end")
      echo "current completed dv clone: $current_dv_num"
@@ -52,9 +58,9 @@ wait_vm_running() {
    local vm_num="$1"
    local timeout=360
    local start=$vm_num
-   local end=$((vm_num + 100))
+   local end=$((vm_num + batch_num))
    local current_vmi_num=$(count_vmi_line "$start" "$end")
-   while [[ "$current_vmi_num" -ne 100 ]]; do
+   while [[ "$current_vmi_num" -ne $batch_num ]]; do
       if [[ "$timeout" -lt 10 ]]; then
             break
       fi
@@ -97,13 +103,13 @@ deploy_vm() {
 	local start="$1"
 	local end="$2"
    local i
-	for ((i="$start"; i<$end; i=i+100)); do
+	for ((i="$start"; i<$end; i=i+batch_num)); do
 		local start_time=$(date +%s)
 		batch_create_vm "$i"
 		wait_dv_clone "$i"
 		local end_time=$(date +%s)
 		echo "batch number $i, completed in $((end_time - start_time))"
-		echo "$i-$((i+99)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vm_deployment_path"
+		echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vm_deployment_path"
 	done
 }
 
@@ -111,14 +117,13 @@ start_vm() {
 	local start="$1"
 	local end="$2"
    local i
-	for ((i="$start"; i<"$end"; i=i+100)); do
+	for ((i="$start"; i<"$end"; i=i+batch_num)); do
 		local start_time=$(date +%s)
 		batch_start_vm "$i"
 		wait_vm_running "$i"
 		local end_time=$(date +%s)
 		echo "batch number $i, vmi start running in $((end_time - start_time))"
-		echo "$i-$((i+99)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vmi_running_path"
+		echo "$i-$((i+batch_num-1)), $((end_time - start_time)), $start_time, $end_time" | tee -a "$vmi_running_path"
    done
 }
 
-deploy_vm 1 6001
