@@ -20,9 +20,9 @@ spec:
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
       source:
-        pvc:
-          namespace: "default"
-          name: "rhel9"
+        snapshot:
+          namespace: default
+          name: vsnapshot
   running: false
   template:
     metadata:
