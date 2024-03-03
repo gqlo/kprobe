@@ -1,13 +1,13 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: win11
+  name: win11-placeholder
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: win11
+      name: win11-placeholder
     spec:
       pvc:
         accessModes:
@@ -18,9 +18,9 @@ spec:
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
       source:
-        pvc:
-          namespace: "default"
-          name: "win11"
+        snapshot:
+          namespace: default
+          name: vsnapshot-win11
   running: false
   template:
     metadata:
@@ -39,7 +39,7 @@ spec:
               tickPolicy: catchup
           utc: {}
         cpu:
-          cores: 8
+          cores: 2
           sockets: 2
           threads: 2
         devices:
@@ -81,12 +81,12 @@ spec:
           type: q35
         resources:
           requests:
-            memory: 64Gi
+            memory: 4Gi
       evictionStrategy: LiveMigrate
       networks:
       - name: default
         pod: {}
       volumes:
       - dataVolume:
-          name: win11
+          name: win11-placeholder
         name: rootdisk
