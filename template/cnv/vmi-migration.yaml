@@ -1,0 +1,7 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: rhel9-placeholder
+  namespace: default
+spec:
+  vmiName: rhel9-placeholder
