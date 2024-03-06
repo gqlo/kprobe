@@ -1,0 +1,16 @@
+# custom mcp pools are inherit from worker pool. We can use this custom pool to make changes to only the targeted nodes within this pool.
+# oc label node node-name node-role.kubernetes.io/custom=
+# oc lable node node-name node-role.kubernetes.io/worker- if you we want to use them as purely custom nodes.
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  name: custom
+spec:
+  machineConfigSelector:
+    matchExpressions:
+      - {key: machineconfiguration.openshift.io/role, operator: In, values: [worker,custom]}
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/custom: ""
+
+

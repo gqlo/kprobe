@@ -1,0 +1,10 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  name: set-max-pods
+  labels:
+    node-role.kubernetes.io: custom
+spec:
+  kubeletConfig:
+    podsPerCore: 0
+    maxPods: 500
