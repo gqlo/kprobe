@@ -108,6 +108,18 @@ get_vmi_boot_time() {
    done
 }
 
+cal_max_boot_time() {
+  local boot_ts_text_file="$1" 
+  local end=$(wc -l < $boot_ts_text_file)
+  echo $end
+  local i
+  for ((i=1; i<=end; i=i+deployment_batch_num)); do
+     local max_val=$(sed -n "${i},$((${i}+${deployment_batch_num}))p" $boot_ts_text_file | awk -F ',' '{print $NF}' | sort -n | tail -1)
+     local batch_name=$(sed -n "${i}p" $boot_ts_text_file | awk -F ',' '{print $1}')
+     echo "$batch_name-$((i+deployment_batch_num-1)), $max_val" | tee -a $max_boot_time
+  done
+}
+
 delete_vm() {
    oc delete vm --all -n default
 }
@@ -184,6 +196,8 @@ batch_deployment_ts="/root/cnv/data/batch_completed_time.csv"
 vm_deployment_ts="/root/cnv/data/deployment_time_ts.csv"
 vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
 vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
+max_boot_time="/root/cnv/data/max_boot_time.csv"
 deployment_batch_num=100
 migration_batch_num=100
 
+cal_max_boot_time $vmi_boot_ts
