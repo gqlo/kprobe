@@ -14,10 +14,10 @@ batch_start_vm() {
    done
 }
 
-batch_migrate_vm() {
+batch_migrate_vmi() {
    local vm_num="$1"
    local i
-   for ((i="$vm_num"; i<migration_batch_num; i++)); do
+   for ((i="$vm_num"; i<vm_num+migration_batch_num; i++)); do
       sed "s/placeholder/$i/g" "$vmi_migration_template" | oc create -f - &
    done
 }
@@ -70,6 +70,22 @@ wait_vm_running() {
    echo "current running vmi: $current_vmi_num timeout: $timeout/$deployment_batch_num"
    sleep 5
    timeout=$((timeout - 5 ))
+   done
+   return 0
+}
+
+wait_vmi_migrate() {
+   local target_vmi_num="$1"
+   local timeout="$((migration_batch_num*36))"  
+   local current_migrated_vmi=$(oc get virtualmachineinstancemigration | grep "Succeeded" | wc -l)
+   while [[ "$current_migrated_vmi" -ne $target_vmi_num ]]; do
+      if [[ "$timeout" -lt 5 ]]; then
+            return 1
+      fi
+      current_migrated_vmi=$(oc get virtualmachineinstancemigration | grep "Succeeded" | wc -l)
+      echo "current migrated vmi: $current_migrated_vmi/$target_vmi_num timeout: $timeout/$((migration_batch_num*36))"
+      sleep 5
+      timeout=$((timeout - 5 ))
    done
    return 0
 }
@@ -148,10 +164,17 @@ sync_clock() {
       echo 'setenforce to enable selinux succeeded' || { echo 'setenforce to enable selinux failed on node $node'; exit 1; }"
 }
 
+get_vm_type() {
+   local yaml_file_path="$1"
+   local vm_type=$(sed -n '/-placeholder/{s/.*: \(.*\)-placeholder.*/\1/;p;q;}' $yaml_file_path)
+   echo "$vm_type"
+}
+
 deploy_vm() {
 	local start="$1"
 	local end="$2"
    local i
+   local vm_type=$(get_vm_type $vm_template) 
 	for ((i="$start"; i<$end; i=i+deployment_batch_num)); do
 		local start_time=$(date +%s)
 		batch_create_vm "$i"
@@ -159,10 +182,10 @@ deploy_vm() {
       status=$?
 		local end_time=$(date +%s)
       if [[ $status -eq 1 ]]; then
-         echo "$i-$((i+deployment_batch_num-1)), vm deployment timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
+         echo "$vm_type-$i-$((i+deployment_batch_num-1)), vm deployment timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
       elif [[ $status -eq 0 ]]; then
 		   echo "batch number $i, completed in $((end_time - start_time))"
-         echo "win11-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
+         echo "$vm_type-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
       fi
    sleep 30
 	done
@@ -188,6 +211,26 @@ start_vm() {
    done
 }
 
+live_migrate_vm() {
+	local start="$1"
+	local end="$2"
+   local i
+   local vm_type=$(get_vm_type $vmi_migration_template)
+	for ((i="$start"; i<"$end"; i=i+migration_batch_num)); do
+		local start_time=$(date +%s)
+		batch_migrate_vmi "$i"
+		wait_vmi_migrate "$((i+migration_batch_num-1))"
+      status=$?
+      local end_time=$(date +%s)
+      if [[ $status -eq 1 ]]; then
+         echo "$vm_type-$i-$((i+migration_batch_num-1)), vmi migration timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_migration_ts"
+      elif [[ $status -eq 0 ]]; then
+		   echo "batch number $i-$((i+migration_batch_num-1)), vmi migrated in $((end_time - start_time))"
+		   echo "$vm_type-$i-$((i+migration_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_migration_ts"
+      fi
+   sleep 30
+   done
+}
 
 # file paths
 vm_template="/root/h-bench/template/cnv/win-vm.yaml"
@@ -196,8 +239,9 @@ batch_deployment_ts="/root/cnv/data/batch_completed_time.csv"
 vm_deployment_ts="/root/cnv/data/deployment_time_ts.csv"
 vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
 vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
+vmi_migration_ts="/root/cnv/data/vmi_migration_time.csv"
 max_boot_time="/root/cnv/data/max_boot_time.csv"
 deployment_batch_num=100
 migration_batch_num=100
 
-cal_max_boot_time $vmi_boot_ts
+live_migrate_vm 1 6001
