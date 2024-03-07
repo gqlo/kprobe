@@ -124,6 +124,36 @@ get_vmi_boot_time() {
    done
 }
 
+get_vmi_migration_time() {
+   local vmi="$1"
+   local src_node=$(oc get VirtualMachineInstanceMigration "$vmi" -o jsonpath='{.status.migrationState.sourceNode}')
+   local target_node=$(oc get VirtualMachineInstanceMigration "$vmi" -o jsonpath='{.status.migrationState.targetNode}') 
+   local Pending=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Pending")
+   local Scheduling=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Scheduling")
+   local Scheduled=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Scheduled")
+   local PreparingTarget=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "PreparingTarget")
+   local TargetReady=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "TargetReady")
+   local Running=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Running")
+   local Succeeded=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Succeeded")
+   local schedule_time=$(( Scheduled - Pending ))  
+   local migration_time=$(( Succeeded - Scheduled ))
+   local total_completion_time=$(( Succeeded - Pending ))
+   echo "$vmi, $schedule_time, $migration_time, $total_completion_time, $src_node, $target_node" | tee -a  "$vmi_migration_stats"
+   
+}
+
+date_to_unix() {
+   local date_ts="$1"
+   echo $(date -d "$date_ts" +"%s")
+}
+
+get_phase_transion_ts() {
+   local obj_name="$1"
+   local phase="$2"
+   local phase_ts=$(oc get $obj_name -o jsonpath='{.status.phaseTransitionTimestamps[?(@.phase=="'"$phase"'")].phaseTransitionTimestamp}')
+   echo $(date_to_unix $phase_ts)
+}
+
 cal_max_boot_time() {
   local boot_ts_text_file="$1" 
   local end=$(wc -l < $boot_ts_text_file)
@@ -219,7 +249,7 @@ live_migrate_vm() {
 	for ((i="$start"; i<"$end"; i=i+migration_batch_num)); do
 		local start_time=$(date +%s)
 		batch_migrate_vmi "$i"
-		wait_vmi_migrate "$((i+migration_batch_num-1))"
+		wait_vmi_migrate "$((i+migration_batch_num-1))"  
       status=$?
       local end_time=$(date +%s)
       if [[ $status -eq 1 ]]; then
@@ -241,7 +271,8 @@ vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
 vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
 vmi_migration_ts="/root/cnv/data/vmi_migration_time.csv"
 max_boot_time="/root/cnv/data/max_boot_time.csv"
+main_log="/root/cnv/data/main.log"
 deployment_batch_num=100
 migration_batch_num=100
 
-live_migrate_vm 1 6001
+live_migrate_vm 1 6001 2>&1 | tee -a $main_log
