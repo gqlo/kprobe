@@ -105,10 +105,8 @@ get_dv_timestamps() {
 get_vmi_boot_time() {
    local vmis="$1"
    for vm in $vmis; do
-      Pending=$(oc get vmi $vm -o jsonpath='{.status.phaseTransitionTimestamps[?(@.phase=="Pending")].phaseTransitionTimestamp}')
-      Scheduled=$(oc get vmi $vm -o jsonpath='{.status.phaseTransitionTimestamps[?(@.phase=="Scheduled")].phaseTransitionTimestamp}')
-      Pending_unix_ts=$(date -d "$Pending" +"%s")
-      Scheduled_unix_ts=$(date -d "$Scheduled" +"%s")
+      local Pending=$(get_phase_transion_ts "vmi" $vm "Pending")
+      local Scheduled=$(get_phase_transion_ts "vmi" $vm "Scheduled")
       if [[ $vm =~ [Ww][Ii][Nn] ]]; then
          timestamp_string=$(virtctl ssh Administrator@$vm --command "type C:\Users\Administrator\timestamp.txt")
       else
@@ -118,40 +116,41 @@ get_vmi_boot_time() {
       boot_unix="${timestamp_string%%,*}"
       boot_unix_ts=$(date -d "$boot_ts" +"%s")
       boot_time=$((boot_unix_ts - Scheduled_unix_ts))
-      schedule_time=$((Scheduled_unix_ts - Pending_unix_ts))
-      total_time=$((boot_unix_ts - Pending_unix_ts))
+      schedule_time=$((Scheduled - Pending))
+      total_time=$((boot_unix_ts - Pending))
       echo "$vm, $schedule_time, $boot_time, $total_time" | tee -a  "$vmi_boot_ts"
    done
 }
 
 get_vmi_migration_time() {
    local vmi="$1"
-   local src_node=$(oc get VirtualMachineInstanceMigration "$vmi" -o jsonpath='{.status.migrationState.sourceNode}')
-   local target_node=$(oc get VirtualMachineInstanceMigration "$vmi" -o jsonpath='{.status.migrationState.targetNode}') 
-   local Pending=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Pending")
-   local Scheduling=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Scheduling")
-   local Scheduled=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Scheduled")
-   local PreparingTarget=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "PreparingTarget")
-   local TargetReady=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "TargetReady")
-   local Running=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Running")
-   local Succeeded=$(get_phase_transion_ts "VirtualMachineInstanceMigration" "Succeeded")
+   local obj_type="VirtualMachineInstanceMigration"
+   local src_node=$(oc get $obj_type "$vmi" -o jsonpath='{.status.migrationState.sourceNode}')
+   local target_node=$(oc get $obj_type "$vmi" -o jsonpath='{.status.migrationState.targetNode}') 
+   local Pending=$(get_phase_transion_ts "$obj_type" "$vmi" "Pending")
+   local Scheduling=$(get_phase_transion_ts "$obj_type" "$vmi" "Scheduling")
+   local Scheduled=$(get_phase_transion_ts "$obj_type" "$vmi" "Scheduled")
+   local PreparingTarget=$(get_phase_transion_ts "$obj_type" "$vmi" "PreparingTarget")
+   local TargetReady=$(get_phase_transion_ts "$obj_type" "$vmi" "TargetReady")
+   local Running=$(get_phase_transion_ts "$obj_type" "$vmi" "Running")
+   local Succeeded=$(get_phase_transion_ts "$obj_type" "$vmi" "Succeeded")
    local schedule_time=$(( Scheduled - Pending ))  
    local migration_time=$(( Succeeded - Scheduled ))
    local total_completion_time=$(( Succeeded - Pending ))
    echo "$vmi, $schedule_time, $migration_time, $total_completion_time, $src_node, $target_node" | tee -a  "$vmi_migration_stats"
-   
 }
 
 date_to_unix() {
    local date_ts="$1"
-   echo $(date -d "$date_ts" +"%s")
+   date -d "$date_ts" +"%s"
 }
 
 get_phase_transion_ts() {
-   local obj_name="$1"
-   local phase="$2"
-   local phase_ts=$(oc get $obj_name -o jsonpath='{.status.phaseTransitionTimestamps[?(@.phase=="'"$phase"'")].phaseTransitionTimestamp}')
-   echo $(date_to_unix $phase_ts)
+   local obj_type="$1"
+   local obj_name="$2"
+   local phase="$3"
+   local phase_ts=$(oc get "$obj_type" "$obj_name" -o jsonpath="{.status.phaseTransitionTimestamps[?(@.phase=='"$phase"')].phaseTransitionTimestamp}")
+   date_to_unix $phase_ts
 }
 
 cal_max_boot_time() {
@@ -200,6 +199,10 @@ get_vm_type() {
    echo "$vm_type"
 }
 
+unix_to_date() {
+   date -d "@$1" +"%Y-%m-%d %H:%M:%S")
+}
+
 deploy_vm() {
 	local start="$1"
 	local end="$2"
@@ -212,10 +215,10 @@ deploy_vm() {
       status=$?
 		local end_time=$(date +%s)
       if [[ $status -eq 1 ]]; then
-         echo "$vm_type-$i-$((i+deployment_batch_num-1)), vm deployment timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
+         echo "$vm_type-$i-$((i+deployment_batch_num-1)), vm deployment timeout: $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$batch_deployment_ts"
       elif [[ $status -eq 0 ]]; then
 		   echo "batch number $i, completed in $((end_time - start_time))"
-         echo "$vm_type-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$batch_deployment_ts"
+         echo "$vm_type-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$batch_deployment_ts"
       fi
    sleep 30
 	done
@@ -232,10 +235,10 @@ start_vm() {
       status=$?
       local end_time=$(date +%s)
       if [[ $status -eq 1 ]]; then
-         echo "$i-$((i+deployment_batch_num-1)), vmi start timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_running_ts"
+         echo "$i-$((i+deployment_batch_num-1)), vmi start timeout: $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$vmi_running_ts"
       elif [[ $status -eq 0 ]]; then
 		   echo "batch number $i, vmi start running in $((end_time - start_time))"
-		   echo "win11-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_running_ts"
+		   echo "win11-$i-$((i+deployment_batch_num-1)), $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$vmi_running_ts"
       fi
    sleep 30
    done
@@ -253,10 +256,10 @@ live_migrate_vm() {
       status=$?
       local end_time=$(date +%s)
       if [[ $status -eq 1 ]]; then
-         echo "$vm_type-$i-$((i+migration_batch_num-1)), vmi migration timeout: $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_migration_ts"
+         echo "$vm_type-$i-$((i+migration_batch_num-1)), vmi migration timeout: $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$vmi_migration_ts"
       elif [[ $status -eq 0 ]]; then
 		   echo "batch number $i-$((i+migration_batch_num-1)), vmi migrated in $((end_time - start_time))"
-		   echo "$vm_type-$i-$((i+migration_batch_num-1)), $((end_time - start_time)), $(date -d "@$start_time" +"%Y-%m-%d %H:%M:%S"), $(date -d "@$end_time" +"%Y-%m-%d %H:%M:%S")" | tee -a "$vmi_migration_ts"
+		   echo "$vm_type-$i-$((i+migration_batch_num-1)), $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" | tee -a "$vmi_migration_ts"
       fi
    sleep 30
    done
@@ -270,9 +273,14 @@ vm_deployment_ts="/root/cnv/data/deployment_time_ts.csv"
 vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
 vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
 vmi_migration_ts="/root/cnv/data/vmi_migration_time.csv"
+vmi_migration_stats="/root/cnv/data/vmi_migration_stats.csv"
 max_boot_time="/root/cnv/data/max_boot_time.csv"
 main_log="/root/cnv/data/main.log"
 deployment_batch_num=100
 migration_batch_num=100
 
-live_migrate_vm 1 6001 2>&1 | tee -a $main_log
+{
+for num in {1..4000}; do
+   get_vmi_migration_time rhel9-"$num"
+done
+} 2>&1 | tee -a $main_log
