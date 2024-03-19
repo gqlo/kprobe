@@ -1,3 +1,5 @@
+# ad hoc script for large cnv/odf scale testing
+
 # batch create 100 VMs at a time
 batch_create_vm() {
    local vm_num="$1"
@@ -181,6 +183,12 @@ clean_odf_disk() {
     echo 'rm command succeeded' || { echo 'rm command failed on node $node'; exit 1; }" 
 }
 
+install_pkg() {
+   local vmi="$1"
+   local pkgs="$2"
+   virtctl ssh root@$vmi -c "dnf install -y $pkgs"
+}
+
 sync_clock() {
    local node="$1"
    oc debug node/"$node" -- chroot /host /bin/bash -c \
@@ -200,7 +208,7 @@ get_vm_type() {
 }
 
 unix_to_date() {
-   date -d "@$1" +"%Y-%m-%d %H:%M:%S")
+   date -d "@$1" +"%Y-%m-%d %H:%M:%S"
 }
 
 deploy_vm() {
@@ -265,12 +273,71 @@ live_migrate_vm() {
    done
 }
 
+# group vmis based on schedueled node
+group_vmi_by_node() {
+   declare -A node_vmi
+   vmi_file="vmis.txt"
+   while IFS= read -r line; do
+     node=$(echo $line | awk '{print $5}' )
+     vmi_name=$(echo $line | awk '{print $1}')
+     node_vmi[$node]="${node_vmi[$node]} $vmi_name"
+   done < "$vmi_file"
+
+   for ((i=1; i<=32; i=i*2)); do
+      for node in "${!node_vmi[@]}"; do
+         read -ra same_node_arr <<< ${node_vmi[$node]}
+         echo "$node: ${same_node_arr[@]:0:$i}" >> batch-$i.txt
+      done
+   done
+}
+
+scp_file() {
+   local vmi="$1"
+   local file="$2"
+   virtctl scp $file root@$vmi:/root/ -n default
+}
+
+exec_vmi_script() {
+   local vmi=$1
+   local batch_num=$2
+   virtctl ssh root@$vmi -c "export batch_num=${batch_num}; /root/run-fio.sh" -n default 
+}
+
+# run workload against vmis in parallel incrementally.
+staged_run() {
+   local n
+   local i
+   local workload_label="$1"
+   mapfile -t vmis < <(awk -F": " '{for (i=2; i<=NF; i++) printf "%s ", $i; print ""}' batch-1.txt)
+   echo ${vmis[@]}
+   for vmi in ${vmis[@]}; do
+     echo "copying file to $vmi"
+     scp_file $vmi "run-fio.sh" &
+   done
+   wait
+   echo "all scripts have been updated.."
+   for n in {1..108}; do
+      local start_time=$(date +%s)
+      local slice=("${vmis[@]:0:$n}")
+      for v in "${slice[@]}"; do
+         echo "executing scripts within vmi: ${slice[@]}"
+         exec_vmi_script $v "$workload_label-osd-count-$n" &
+      done
+      wait
+      local end_time=$(date +%s)
+      echo "batch-$workload_label-osd-count-$n, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
+   done
+}
+
+
+
 # file paths
 vm_template="/root/h-bench/template/cnv/win-vm.yaml"
 vmi_migration_template="/root/h-bench/template/cnv/vmi-migration.yaml"
 batch_deployment_ts="/root/cnv/data/batch_completed_time.csv"
 vm_deployment_ts="/root/cnv/data/deployment_time_ts.csv"
 vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
+fio_workload_ts="/root/cnv/data/fio_workload_ts.csv"
 vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
 vmi_migration_ts="/root/cnv/data/vmi_migration_time.csv"
 vmi_migration_stats="/root/cnv/data/vmi_migration_stats.csv"
@@ -280,7 +347,5 @@ deployment_batch_num=100
 migration_batch_num=100
 
 {
-for num in {1..4000}; do
-   get_vmi_migration_time rhel9-"$num"
-done
+staged_run "pg-tuned"
 } 2>&1 | tee -a $main_log
