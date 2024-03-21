@@ -300,7 +300,7 @@ scp_file() {
 exec_vmi_script() {
    local vmi=$1
    local batch_num=$2
-   virtctl ssh root@$vmi -c "export batch_num=${batch_num}; /root/run-fio.sh" -n default 
+   virtctl ssh root@$vmi -c "export batch_num=${batch_num}; /root/fio.sh" -n default 
 }
 
 # run workload against vmis in parallel incrementally.
@@ -312,24 +312,23 @@ staged_run() {
    echo ${vmis[@]}
    for vmi in ${vmis[@]}; do
      echo "copying file to $vmi"
-     scp_file $vmi "run-fio.sh" &
+     scp_file $vmi "/root/h-bench/workload/fio.sh" &
    done
    wait
    echo "all scripts have been updated.."
-   for n in {1..108}; do
+   for n in {1..1}; do
       local start_time=$(date +%s)
       local slice=("${vmis[@]:0:$n}")
       for v in "${slice[@]}"; do
-         echo "executing scripts within vmi: ${slice[@]}"
+         echo "executing scripts within vmi: $v"
          exec_vmi_script $v "$workload_label-osd-count-$n" &
       done
       wait
+      sleep 60
       local end_time=$(date +%s)
       echo "batch-$workload_label-osd-count-$n, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
    done
 }
-
-
 
 # file paths
 vm_template="/root/h-bench/template/cnv/win-vm.yaml"
