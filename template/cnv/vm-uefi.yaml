@@ -1,14 +1,12 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: rhel9-placeholder
+  name: rhel9-multi-disks
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      annotations:
-        cdi.kubevirt.io/smartCloneFromExistingSnapshot: default/vsnapshot
       name: rhel9-placeholder
     spec:
       pvc:
@@ -20,9 +18,9 @@ spec:
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
       source:
-        snapshot:
+        pvc:
           namespace: default
-          name: vsnapshot
+          name: rhel9-uefi
   running: false
   template:
     metadata:
@@ -30,15 +28,17 @@ spec:
         kubevirt.io/domain: rhel9
     spec:
       domain:
+        machine:
+          type: q35
         cpu:
-          cores: 1
-          sockets: 2
+          cores: 2
+          sockets: 1
           threads: 1
         devices:
           disks:
           - disk:
               bus: virtio
-            name: rootdisk
+            name: vda
           interfaces:
           - masquerade: {}
             model: virtio
@@ -46,8 +46,13 @@ spec:
           networkInterfaceMultiqueue: true
           rng: {}
         features:
+          acpi: {}
           smm:
             enabled: true
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
         resources:
           requests:
             memory: 4Gi
@@ -58,4 +63,4 @@ spec:
       volumes:
       - dataVolume:
           name: rhel9-placeholder
-        name: rootdisk
+        name: vda
