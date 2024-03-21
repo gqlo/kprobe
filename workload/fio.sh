@@ -22,7 +22,7 @@ for load in ${workload[@]}; do
 
    echo "batch=$batch_num, vmi=$hname, fio=$load started $(date +"%Y-%m-%d %H:%M:%S")"
    if [[ $load == "randread" ]]; then
-      fio --name=$hname --ioengine=libaio --rw="$load" --bs=4k --direct=1 --numjobs=1 --size=8G --runtime=30m  --iodepth="$iodepth" --output="$output_file"
+      fio --name=$hname --filename=/dev/vda --ioengine=libaio --rw="$load" --bs=4k --direct=1 --numjobs=1 --size=8G --runtime=30m  --iodepth="$iodepth" --output="$output_file"
    else
       fio --name=$hname --ioengine=libaio --rw="$load" --bs=4k --direct=1 --numjobs=1 --size=8G --runtime=30m  --iodepth="$iodepth" --output="$output_file"
    fi
