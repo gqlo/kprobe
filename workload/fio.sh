@@ -7,21 +7,23 @@ if [[ ! -d /root/fio-output/ ]]; then
    mkdir -p /root/fio-output/
 fi
 
-# workload=(randwrite randread randrw)
-workload=(randwrite)
-# block_size=(4k 8k 16k 32k 64k 128k 256k 1024k)
-block_size=(4k)
-iodepth=256
+workload=(randread)
+block_size=(16k)
+io_engine=psync
+iodepth=128
 num_jobs=1
-run_time=30m
-file_size=8G
-io_engine=libaio
-o_direct=1
-
+size=2G
+lockmem=2G
+thinktime=1s
+cpuload=100
+o_direct=0
+time_based=1
+run_time=10m
 
 for load in ${workload[@]}; do
    for blk in ${block_size[@]}; do
       output_file="/root/fio-output/$load-$hname-$batch_num-$blk.txt"
+      fio_base_cmd="fio --name=$hname --filename=/root/fio-output/$hname --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --numjobs=$num_jobs --runtime=$run_time --iodepth=$iodepth --time_based=$time_based --output=$output_file"
       if [[ -f "$output_file" ]]; then
         sudo rm -rf "$output_file"
       fi
@@ -29,17 +31,18 @@ for load in ${workload[@]}; do
       if [[ -z "$FIO" ]]; then
          sudo dnf install -y fio
       fi
+
       echo "batch=$batch_num, vmi=$hname, fio=$load, blk=$blk, started $(date +"%Y-%m-%d %H:%M:%S")"
-
-      if [[ $load == "randread" ]]; then
-         fio --name=$hname --filename=/dev/vda --ioengine="$io_engine" --rw="$load" --bs="$blk" --direct="$o_direct" --numjobs="$num_jobs" --size="$file_size" --runtime="$run_time"  --iodepth="$iodepth" --output="$output_file"
+      if [[ $io_engine == "cpuio" ]]; then
+         eval "$fio_base_cmd --cpuload=$cpuload"
+      elif [[ $io_engine == "psync" ]]; then
+         eval "$fio_base_cmd --lockmem=$lockmem --thinktime=$thinktime"
       else
-         fio --name=$hname --ioengine="$io_engine" --rw="$load" --bs="$blk" --direct="$o_direct" --numjobs="$num_jobs" --size="$file_size" --runtime="$run_time"  --iodepth="$iodepth" --output="$output_file"
+         eval "$fio_base_cmd"
       fi
-
-      sudo rm -rf /root/rhel9*
+      sudo rm -rf /root/fio-output/$hname
       echo "batch=$batch_num, vmi=$hname, fio=$load, blk=$blk, ended $(date +"%Y-%m-%d %H:%M:%S")"
-      sleep 15
+      sleep 20
    done
 done
 }  2>&1 | tee -a /root/fio-output/fio-"$hname"-"$batch_num".log
