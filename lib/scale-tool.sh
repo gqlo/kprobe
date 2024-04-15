@@ -22,6 +22,7 @@ batch_migrate_vmi() {
    for ((i="$vm_num"; i<vm_num+migration_batch_num; i++)); do
       sed "s/placeholder/$i/g" "$vmi_migration_template" | oc create -f - &
    done
+   wait
 }
 
 count_dv_line() {
@@ -77,18 +78,47 @@ wait_vm_running() {
 }
 
 wait_vmi_migrate() {
-   local target_vmi_num="$1"
+   local last_vmi_id="$1"
    local timeout="$((migration_batch_num*36))"  
-   local current_migrated_vmi=$(oc get virtualmachineinstancemigration | grep "Succeeded" | wc -l)
-   while [[ "$current_migrated_vmi" -ne $target_vmi_num ]]; do
-      if [[ "$timeout" -lt 5 ]]; then
-            return 1
-      fi
-      current_migrated_vmi=$(oc get virtualmachineinstancemigration | grep "Succeeded" | wc -l)
-      echo "current migrated vmi: $current_migrated_vmi/$target_vmi_num timeout: $timeout/$((migration_batch_num*36))"
-      sleep 5
-      timeout=$((timeout - 5 ))
+   local -a current_vmis
+   local failed=0 # vmim object created, status shows failed
+   local non_succeeded=0 # vmim object failed at creation, cluster connectivity issue
+   local succeeded=0
+   local i
+   local vmi
+   local phase
+   for ((i=migration_batch_num - 1; i>=0; i--)); do
+      current_vmis[$i]="rhel9-$last_vmi_id"
+      last_vmi_id=$((last_vmi_id - 1))
    done
+   
+   while [[ $timeout -gt 0 ]]; do
+      for vmi in "${current_vmis[@]}"; do
+         local vmi_index=$(( ${vmi#*-} % migration_batch_num - 1))
+         phase=$(oc get vmim $vmi -o jsonpath={.status.phase} -n default)
+         if [[ $? -ne 0 ]]; then
+            non_succeeded=$((non_succeeded + 1))
+            unset current_vmis[$vmi_index]
+         fi
+         if [[ "$phase" == "Succeeded" ]]; then
+            succeeded=$((succeeded + 1))
+            unset current_vmis[$vmi_index]
+         elif [[ "$phase" == "Failed" ]]; then
+            failed=$((failed + 1))
+            unset current_vmis[$vmi_index]
+         fi
+      done
+      if [[ $((non_succeeded + succeeded + failed)) -eq $migration_batch_num ]]; then
+         echo "migration succeeded/failed/non-succeeded vmi: $succeeded/$failed/$non_succeeded, timeout: $timeout/$((migration_batch_num*36))"
+         break
+      fi
+      echo "migration succeeded/failed/non-succeeded vmi: $succeeded/$failed/$non_succeeded, timeout: $timeout/$((migration_batch_num*36))"
+      timeout=$((timeout - 5 ))
+      sleep 5
+   done
+   if [[ "$timeout" -lt 5 ]]; then
+            return 1
+   fi
    return 0
 }
 
@@ -257,7 +287,9 @@ live_migrate_vm() {
 	local end="$2"
    local i
    local vm_type=$(get_vm_type $vmi_migration_template)
+   local passwd=$(cat /home/kni/clusterconfigs/auth/kubeadmin-password)
 	for ((i="$start"; i<"$end"; i=i+migration_batch_num)); do
+      oc login -u kubeadmin -p $passwd && echo "kubeadmin login successfully"
 		local start_time=$(date +%s)
 		batch_migrate_vmi "$i"
 		wait_vmi_migrate "$((i+migration_batch_num-1))"  
@@ -308,26 +340,30 @@ staged_run() {
    local n
    local i
    local workload_label="$1"
-   mapfile -t vmis < <(awk -F": " '{for (i=2; i<=NF; i++) printf "%s ", $i; print ""}' batch-1.txt)
+   local batch="$2"
+   local passwd=$(cat /home/kni/clusterconfigs/auth/kubeadmin-password)
+   mapfile -t vmis < <(awk -F": " '{for (i=2; i<=NF; i++) printf "%s ", $i; print ""}' $batch.txt)
    echo ${vmis[@]}
    for vmi in ${vmis[@]}; do
      echo "copying file to $vmi"
      scp_file $vmi "/root/h-bench/workload/fio.sh" &
    done
    wait
+   vm_num=${batch#*-}
+   local n=$((vm_num * 108))
+   echo "total vm number: $n"
    echo "all scripts have been updated.."
-   for n in {1..1}; do
-      local start_time=$(date +%s)
-      local slice=("${vmis[@]:0:$n}")
-      for v in "${slice[@]}"; do
-         echo "executing scripts within vmi: $v"
-         exec_vmi_script $v "$workload_label-osd-count-$n" &
-      done
-      wait
-      sleep 60
-      local end_time=$(date +%s)
-      echo "batch-$workload_label-osd-count-$n, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
+   local start_time=$(date +%s)
+   local slice=("${vmis[@]:0:$n}")
+   oc login -u kubeadmin -p $passwd && echo "kubeadmin login successfully"
+   for v in "${slice[@]}"; do
+      echo "executing scripts within vmi: $v"
+      exec_vmi_script $v "$batch-$workload_label-osd-count-$n" &
    done
+   wait
+   sleep 60
+   local end_time=$(date +%s)
+   echo "$batch-$workload_label-osd-count-$n, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
 }
 
 # file paths
@@ -346,5 +382,6 @@ deployment_batch_num=100
 migration_batch_num=100
 
 {
-staged_run "pg-tuned"
+#staged_run "pg-tuned" "batch-$i"
+live_migrate_vm 1 6000
 } 2>&1 | tee -a $main_log
