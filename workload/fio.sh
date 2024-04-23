@@ -8,22 +8,27 @@ if [[ ! -d /root/fio-output/ ]]; then
 fi
 
 workload=(randread)
-block_size=(16k)
-io_engine=psync
-iodepth=128
+block_size=(4k 8k 16k 32k 64k)
+#cpuio, psync, libaio
+io_engine=libaio
+iodepth=32
 num_jobs=1
-size=2G
-lockmem=2G
+size=1G
+lockmem=1G
 thinktime=1s
 cpuload=100
-o_direct=0
+o_direct=1
 time_based=1
-run_time=10m
+run_time=30m
 
 for load in ${workload[@]}; do
    for blk in ${block_size[@]}; do
       output_file="/root/fio-output/$load-$hname-$batch_num-$blk.txt"
-      fio_base_cmd="fio --name=$hname --filename=/root/fio-output/$hname --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --numjobs=$num_jobs --runtime=$run_time --iodepth=$iodepth --time_based=$time_based --output=$output_file"
+      if [[ $load == "randread" ]]; then
+         fio_base_cmd="fio --name=$hname --filename=/dev/vda --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --numjobs=$num_jobs --runtime=$run_time --iodepth=$iodepth --time_based=$time_based --output=$output_file"
+      else
+         fio_base_cmd="fio --name=$hname --filename=/root/fio-output/$hname --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --numjobs=$num_jobs --runtime=$run_time --iodepth=$iodepth --time_based=$time_based --output=$output_file"
+      fi
       if [[ -f "$output_file" ]]; then
         sudo rm -rf "$output_file"
       fi
@@ -42,7 +47,7 @@ for load in ${workload[@]}; do
       fi
       sudo rm -rf /root/fio-output/$hname
       echo "batch=$batch_num, vmi=$hname, fio=$load, blk=$blk, ended $(date +"%Y-%m-%d %H:%M:%S")"
-      sleep 20
+      sleep 120
    done
 done
 }  2>&1 | tee -a /root/fio-output/fio-"$hname"-"$batch_num".log
