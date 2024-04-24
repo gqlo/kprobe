@@ -2,12 +2,11 @@
 hname=$(hostname)
 FIO=$(command -v fio)
 
-{
 if [[ ! -d /root/fio-output/ ]]; then
    mkdir -p /root/fio-output/
 fi
-
-workload=(randread)
+{
+workload=(randwrite)
 block_size=(4k 8k 16k 32k 64k)
 #cpuio, psync, libaio
 io_engine=libaio
@@ -19,8 +18,9 @@ thinktime=1s
 cpuload=100
 o_direct=1
 time_based=1
-run_time=30m
-
+run_time=15m
+batch_num="$1"
+echo "current batch num=$batch_num"
 for load in ${workload[@]}; do
    for blk in ${block_size[@]}; do
       output_file="/root/fio-output/$load-$hname-$batch_num-$blk.txt"
@@ -50,4 +50,4 @@ for load in ${workload[@]}; do
       sleep 120
    done
 done
-}  2>&1 | tee -a /root/fio-output/fio-"$hname"-"$batch_num".log
+}  2>&1 | tee -a /root/fio-output/fio-"$hname-main".log
