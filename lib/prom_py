@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 
 import os
 import re
@@ -157,6 +157,27 @@ def process_raw_json_obj(json_obj):
         res[list(item['metric'].keys())[0]] = [float(value[1]) for value in item['values']]
     return res
 
+def json_to_csv(file_path):
+    if file_is_readable(file_path):
+        json_obj = read_json_file(file_path)
+    check_meta_data(json_obj)
+    result = json_obj['data']["result"]
+    csv_file_path=re.sub(r"\.json$", ".csv", file_path)
+    item = result[0]
+    for item in result:
+        if len(item['metric']) == 0:
+             continue
+        values = []
+        container_name = '-'.join([ item['metric'][key] for key in metric_names])
+        print(item)
+        values = [float(value[1]) for value in item['values']]
+        non_zero_values = [value for value in values if value != float(0)]
+        if len(non_zero_values) != len(values) or len(non_zero_values) == 0:
+            print(f"found zero value: {container_name}, non-zero values/zero values count{len(values)}/{len(non_zero_values)}")
+        for value in values:
+            csv_write_row(csv_file_path, [value])
+        print(f"csv file saved at {csv_file_path}")
+    
 # Extract the max and average value of each container or pod as csv file
 def extract_max_avg_value(file_path, scale):
     if file_is_readable(file_path):
@@ -371,7 +392,7 @@ def sum_csv_column_by_dir(csv_dir):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="command line options for promethus data processing.")
     parser.add_argument('-s', '--scale', type=int, default=1, help="the scale factor number to be divided")
-    parser.add_argument('-j', '--file', type=str, help="json file path, extract average and max data point as csv format")
+    parser.add_argument('-j', '--file', type=str, help="json file path, extract value and save it as csv file")
     parser.add_argument('-t', '--timestamp', type=str, help="timestamp file path")
     parser.add_argument('-p', '--profile', type=str, help="promethus metric profile path")
     parser.add_argument('-c', '--csv', type=str, help="add csv column value")
@@ -382,7 +403,7 @@ if __name__ == '__main__':
         parser.error("both --timestamp and --profile file path must be passed together")
 
     if args.file:
-        extract_max_avg_value(args.file, args.scale)
+        json_to_csv(args.file)
     elif args.profile or args.timestamp:
         time_stamp = read_time_stamps(args.timestamp)
         metric_profile = read_yaml(args.profile)

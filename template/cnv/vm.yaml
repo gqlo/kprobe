@@ -38,7 +38,7 @@ spec:
           disks:
           - disk:
               bus: virtio
-            name: rootdisk
+            name: vda
           interfaces:
           - masquerade: {}
             model: virtio
@@ -58,4 +58,4 @@ spec:
       volumes:
       - dataVolume:
           name: rhel9-placeholder
-        name: rootdisk
+        name: vda
