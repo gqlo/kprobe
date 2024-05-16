@@ -329,41 +329,34 @@ scp_file() {
    virtctl scp $file root@$vmi:/root/ -n default
 }
 
+oc_authenticate() {
+   local passwd=$(cat /home/kni/clusterconfigs/auth/kubeadmin-password)
+   oc login -u kubeadmin -p $passwd && echo "kubeadmin login successfully" || echo "Failed to login as kubeadmin"
+}
+
+
 exec_vmi_script() {
-   local vmi=$1
-   local batch_num=$2
-   virtctl ssh root@$vmi -c "export batch_num=${batch_num}; /root/fio.sh" -n default 
+   local vmi="$1"
+   local workload_label="$2"
+   virtctl -n default ssh root@"$vmi" -c "/root/fio.sh $workload_label"
 }
 
 # run workload against vmis in parallel incrementally.
 staged_run() {
-   local n
    local i
    local workload_label="$1"
    local batch="$2"
-   local passwd=$(cat /home/kni/clusterconfigs/auth/kubeadmin-password)
-   mapfile -t vmis < <(awk -F": " '{for (i=2; i<=NF; i++) printf "%s ", $i; print ""}' $batch.txt)
-   echo ${vmis[@]}
-   for vmi in ${vmis[@]}; do
-     echo "copying file to $vmi"
-     scp_file $vmi "/root/h-bench/workload/fio.sh" &
-   done
-   wait
-   vm_num=${batch#*-}
-   local n=$((vm_num * 108))
-   echo "total vm number: $n"
-   echo "all scripts have been updated.."
+   oc_authenticate
    local start_time=$(date +%s)
-   local slice=("${vmis[@]:0:$n}")
-   oc login -u kubeadmin -p $passwd && echo "kubeadmin login successfully"
-   for v in "${slice[@]}"; do
-      echo "executing scripts within vmi: $v"
-      exec_vmi_script $v "$batch-$workload_label-osd-count-$n" &
+   local vmi_load_label=$(echo "$workload_label-vm-count-$batch")
+   echo $vmi_load_label
+   for ((i=1; i<=$batch; i++)); do
+      exec_vmi_script "rhel9-$i" "$vmi_load_label" &
    done
    wait
-   sleep 60
    local end_time=$(date +%s)
-   echo "$batch-$workload_label-osd-count-$n, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
+   echo "$workload_label-vm-count-$batch, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
+   sleep 360
 }
 
 # file paths
@@ -382,6 +375,7 @@ deployment_batch_num=100
 migration_batch_num=100
 
 {
-#staged_run "pg-tuned" "batch-$i"
-live_migrate_vm 1 6000
+for ((n=100; n<=6000; n=n+100)); do 
+   staged_run "no-scrub-parallel-run-randwrite" "$n"
+done
 } 2>&1 | tee -a $main_log
