@@ -1,11 +1,11 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: rhel9
+  name: rhel9-parent
 spec:
   source:
       http:
-         url: http://192.168.0.1:8000/rhel9.qcow2
+         url: http://10.16.29.214:8080/rhel9.4.qcow2
   pvc:
     accessModes:
       - ReadWriteMany
