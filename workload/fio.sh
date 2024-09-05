@@ -30,7 +30,7 @@ for load in ${workload[@]}; do
       for depth in ${iodepth[@]}; do
 	 for job in ${num_jobs[@]}; do
 	    for iorate in ${io_rate[@]}; do
-	       output_file="/root/fio-output/$run_name-$hname-$blk-$load-depth-$iodepth-numjob-$job-rate-$iorate.json"
+	       output_file="/root/fio-output/$run_name-$hname-$blk-$load-depth-$depth-numjob-$job-rate-$iorate.json"
 	       if [[ $load == "randread" ]]; then
 		  fio_base_cmd="fio --name=$hname --filename=/dev/vdb --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --rwmixread=$rwmixread --numjobs=$job --runtime=$run_time --iodepth=$depth --time_based=$time_based --output-format=json+ --output=$output_file --rate_iops=$iorate"
 	       else
