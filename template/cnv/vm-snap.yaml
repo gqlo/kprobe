@@ -7,6 +7,8 @@ spec:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
+      annotations:
+        cdi.kubevirt.io/smartCloneFromExistingSnapshot: default/vsnapshot
       name: rhel9-placeholder
     spec:
       pvc:
@@ -14,10 +16,14 @@ spec:
         - ReadWriteMany
         resources:
           requests:
-            storage: 22Gi
+            storage: 23Gi
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
-  running: false
+      source:
+        snapshot:
+          namespace: default
+          name: rhel9-snap
+  running: true
   template:
     metadata:
       labels:
@@ -25,9 +31,7 @@ spec:
     spec:
       domain:
         cpu:
-          cores: 1
-          sockets: 2
-          threads: 1
+          cores: 2
         devices:
           disks:
           - disk:
@@ -48,7 +52,7 @@ spec:
               secureBoot: false
         resources:
           requests:
-            memory: 4Gi
+            memory: 16Gi
       evictionStrategy: LiveMigrate
       networks:
       - name: default

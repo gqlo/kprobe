@@ -7,7 +7,9 @@ spec:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: rhel9-placeholder
+      annotations:
+        cdi.kubevirt.io/smartCloneFromExistingSnapshot: default/vsnapshot
+      name: root-placeholder
     spec:
       pvc:
         accessModes:
@@ -17,22 +19,45 @@ spec:
             storage: 22Gi
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
-  running: false
+      source:
+        snapshot:
+          namespace: default
+          name: rhel9-snap
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      name: data-placeholder
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 150Gi
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        blank: {}
+  running: true
   template:
     metadata:
       labels:
         kubevirt.io/domain: rhel9
     spec:
       domain:
+        ioThreadsPolicy: auto
         cpu:
-          cores: 1
-          sockets: 2
-          threads: 1
+          cores: 16
         devices:
+          blockMultiQueue: true
           disks:
           - disk:
               bus: virtio
             name: vda
+          - disk:
+              bus: virtio
+            name: vdb
+            dedicatedIOThread: true
           interfaces:
           - masquerade: {}
             model: virtio
@@ -48,12 +73,16 @@ spec:
               secureBoot: false
         resources:
           requests:
-            memory: 4Gi
+            memory: 128Gi
+            cpu: 16
       evictionStrategy: LiveMigrate
       networks:
       - name: default
         pod: {}
       volumes:
-      - dataVolume:
-          name: rhel9-placeholder
-        name: vda
+        - name: vda
+          dataVolume:
+            name: root-placeholder
+        - name: vdb
+          dataVolume:
+            name: data-placeholder 

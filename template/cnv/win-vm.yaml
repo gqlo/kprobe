@@ -1,26 +1,22 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: win11-placeholder
+  name: win2019
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: win11-placeholder
+      name: win2019
     spec:
       pvc:
         accessModes:
         - ReadWriteMany
         resources:
           requests:
-            storage: 70Gi
+            storage: 100Gi
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
-      source:
-        snapshot:
-          namespace: default
-          name: vsnapshot-win11
   running: false
   template:
     metadata:
@@ -88,5 +84,5 @@ spec:
         pod: {}
       volumes:
       - dataVolume:
-          name: win11-placeholder
+          name: win2019
         name: rootdisk

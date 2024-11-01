@@ -1,0 +1,13 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  name: set-allocatable
+  namespace: openshift-config-operator
+spec:
+  machineConfigPoolSelector:
+    matchLabels:
+      pools.operator.machineconfiguration.openshift.io/worker: ""               # change the label to find the nodes with heavy workload
+  kubeletConfig:
+    systemReserved:
+      cpu: 500m                                                                 # change the CPU if needed
+      memory: 2048Mi                                                            # change the memory if needed

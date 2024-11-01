@@ -338,7 +338,8 @@ oc_authenticate() {
 exec_vmi_script() {
    local vmi="$1"
    local workload_label="$2"
-   virtctl -n default ssh root@"$vmi" -c "/root/fio.sh $workload_label"
+   # virtctl -n default ssh root@"$vmi" -c "/root/fio.sh $workload_label"
+   virtctl -n default ssh root@"$vmi" -c " tmux new-session -d -s fio-session '/root/fio.sh $workload_label'"
 }
 
 # run workload against vmis in parallel incrementally.
@@ -351,31 +352,28 @@ staged_run() {
    local vmi_load_label=$(echo "$workload_label-vm-count-$batch")
    echo $vmi_load_label
    for ((i=1; i<=$batch; i++)); do
-      exec_vmi_script "rhel9-$i" "$vmi_load_label" &
+      exec_vmi_script "rhel9-snap-$i" "$vmi_load_label" &
    done
    wait
    local end_time=$(date +%s)
    echo "$workload_label-vm-count-$batch, $((end_time - start_time)), $(unix_to_date $start_time), $(unix_to_date $end_time)" |  tee -a "$fio_workload_ts"
-   sleep 360
 }
 
 # file paths
-vm_template="/root/h-bench/template/cnv/win-vm.yaml"
-vmi_migration_template="/root/h-bench/template/cnv/vmi-migration.yaml"
-batch_deployment_ts="/root/cnv/data/batch_completed_time.csv"
-vm_deployment_ts="/root/cnv/data/deployment_time_ts.csv"
-vmi_boot_ts="/root/cnv/data/vmi_boot_ts.csv"
-fio_workload_ts="/root/cnv/data/fio_workload_ts.csv"
-vmi_running_ts="/root/cnv/data/vmi_running_time.csv"
-vmi_migration_ts="/root/cnv/data/vmi_migration_time.csv"
-vmi_migration_stats="/root/cnv/data/vmi_migration_stats.csv"
-max_boot_time="/root/cnv/data/max_boot_time.csv"
-main_log="/root/cnv/data/main.log"
+vm_template="/root/krpobe/template/cnv/win-vm.yaml"
+vmi_migration_template="/root/kprobe/template/cnv/vmi-migration.yaml"
+batch_deployment_ts="/root/kprobe/data/batch_completed_time.csv"
+vm_deployment_ts="/root/kprobe/data/deployment_time_ts.csv"
+vmi_boot_ts="/root/kprobe/data/vmi_boot_ts.csv"
+fio_workload_ts="/root/kprobe/data/fio_workload_ts.csv"
+vmi_running_ts="/root/kprobe/data/vmi_running_time.csv"
+vmi_migration_ts="/root/kprobe/data/vmi_migration_time.csv"
+vmi_migration_stats="/root/kprobe/data/vmi_migration_stats.csv"
+max_boot_time="/root/kprobe/data/max_boot_time.csv"
+main_log="/root/kprobe/data/main.log"
 deployment_batch_num=100
 migration_batch_num=100
 
 {
-for ((n=100; n<=6000; n=n+100)); do 
-   staged_run "no-scrub-parallel-run-randwrite" "$n"
-done
+staged_run "pg_2048_16_64g" "104"
 } 2>&1 | tee -a $main_log

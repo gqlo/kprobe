@@ -1,38 +1,57 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: rhel9-placeholder
+  name: rhel9-lvm
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: rhel9-placeholder
+      name: rhel9-lvm
     spec:
       pvc:
         accessModes:
-        - ReadWriteMany
+        - ReadWriteOnce
         resources:
           requests:
             storage: 22Gi
         volumeMode: Block
-        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
-  running: false
+        storageClassName: lvms-vg-nvme
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      name: dedicate-b-lvm
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 256Gi
+        volumeMode: Block
+        storageClassName: lvms-vg-nvme
+      source:
+        blank: {}
+  running: true
   template:
     metadata:
       labels:
         kubevirt.io/domain: rhel9
     spec:
       domain:
+        ioThreadsPolicy: auto
         cpu:
-          cores: 1
-          sockets: 2
-          threads: 1
+          cores: 16
         devices:
           disks:
           - disk:
               bus: virtio
-            name: vda
+            name: rhel9-lvm
+            dedicatedIOThread: true
+          - disk:
+              bus: virtio
+            name: dedicate-b-lvm
+            dedicatedIOThread: true
           interfaces:
           - masquerade: {}
             model: virtio
@@ -48,12 +67,15 @@ spec:
               secureBoot: false
         resources:
           requests:
-            memory: 4Gi
-      evictionStrategy: LiveMigrate
+            memory: 64Gi
+            cpu: 16
       networks:
       - name: default
         pod: {}
       volumes:
-      - dataVolume:
-          name: rhel9-placeholder
-        name: vda
+        - name: rhel9-lvm
+          dataVolume:
+            name: rhel9-lvm
+        - name: dedicate-b-lvm
+          dataVolume:
+            name: dedicate-b-lvm

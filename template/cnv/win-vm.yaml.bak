@@ -1,51 +1,84 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: rhel9-placeholder
+  name: win11-placeholder
 spec:
   dataVolumeTemplates:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: rhel9-placeholder
+      name: win11-placeholder
     spec:
       pvc:
         accessModes:
         - ReadWriteMany
         resources:
           requests:
-            storage: 22Gi
+            storage: 70Gi
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        snapshot:
+          namespace: default
+          name: vsnapshot-win11
   running: false
   template:
     metadata:
       labels:
-        kubevirt.io/domain: rhel9
+        kubevirt.io/domain: win11
     spec:
       domain:
+        clock:
+          timer:
+            hpet:
+              present: false
+            hyperv: {}
+            pit:
+              tickPolicy: delay
+            rtc:
+              tickPolicy: catchup
+          utc: {}
         cpu:
-          cores: 1
+          cores: 2
           sockets: 2
-          threads: 1
+          threads: 2
         devices:
           disks:
           - disk:
               bus: virtio
-            name: vda
+            name: rootdisk
           interfaces:
           - masquerade: {}
             model: virtio
             name: default
           networkInterfaceMultiqueue: true
-          rng: {}
+          tpm: {}
         features:
           smm:
             enabled: true
+          acpi: {}
+          apic: {}
+          hyperv:
+            frequencies: {}
+            ipi: {}
+            reenlightenment: {}
+            relaxed: {}
+            reset: {}
+            runtime: {}
+            spinlocks:
+              spinlocks: 8191
+            synic: {}
+            synictimer:
+              direct: {}
+            tlbflush: {}
+            vapic: {}
+            vpindex: {}
         firmware:
           bootloader:
             efi:
               secureBoot: false
+        machine:
+          type: q35
         resources:
           requests:
             memory: 4Gi
@@ -55,5 +88,5 @@ spec:
         pod: {}
       volumes:
       - dataVolume:
-          name: rhel9-placeholder
-        name: vda
+          name: win11-placeholder
+        name: rootdisk

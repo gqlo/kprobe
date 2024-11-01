@@ -1,7 +1,7 @@
 apiVersion: "local.storage.openshift.io/v1"
 kind: "LocalVolume"
 metadata:
-  name: "local-volume-block"
+  name: "promdb-lso"
   namespace: "openshift-local-storage"
 spec:
   nodeSelector:
@@ -10,11 +10,10 @@ spec:
         - key: kubernetes.io/hostname
           operator: In
           values:
-          - worker005-1029p
-          - worker006-1029p
-          - worker007-1029p
+          - e40-h36-000-r650.rdu2.scalelab.redhat.com
+          - f30-h21-000-r640.rdu2.scalelab.redhat.com
   storageClassDevices:
-    - storageClassName: "local-volume-block"
+    - storageClassName: "promdb-lso"
       volumeMode: Block
       devicePaths:
-        - /dev/nvme0n1
+        - /dev/sdc
