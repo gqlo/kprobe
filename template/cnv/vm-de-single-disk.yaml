@@ -1,0 +1,88 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel9-dedicate-single-disk
+spec:
+  dataVolumeTemplates:
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      annotations:
+        cdi.kubevirt.io/smartCloneFromExistingSnapshot: default/vsnapshot
+      name: dedicate-root
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 22Gi
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        pvc:
+          namespace: default
+          name: rhel9-placeholder
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+            name: dedicate-single-disk
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 256Gi
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        blank: {}
+  running: true
+  template:
+    metadata:
+      labels:
+        kubevirt.io/domain: rhel9
+    spec:
+      domain:
+        ioThreadsPolicy: auto
+        cpu:
+          cores: 16
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: dedicate-root
+            dedicatedIOThread: true
+          - disk:
+              bus: virtio
+            name: dedicate-single-disk
+            dedicatedIOThread: true
+          interfaces:
+          - masquerade: {}
+            model: virtio
+            name: default
+          networkInterfaceMultiqueue: true
+          rng: {}
+        features:
+          smm:
+            enabled: true
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
+        resources:
+          requests:
+            memory: 64Gi
+            cpu: 16
+      evictionStrategy: LiveMigrate
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: dedicate-root
+          dataVolume:
+            name: dedicate-root
+        - name: dedicate-single-disk
+          dataVolume:
+            name: dedicate-single-disk

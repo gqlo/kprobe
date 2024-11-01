@@ -6,4 +6,4 @@ metadata:
 spec:
   volumeSnapshotClassName: ocs-storagecluster-rbdplugin-snapclass
   source:
-    persistentVolumeClaimName: rhel9-grandparent
+    persistentVolumeClaimName: rhel9-placeholder

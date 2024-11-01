@@ -20,7 +20,7 @@ spec:
       source:
         pvc:
           namespace: default
-          name: rhel9-uefi
+          name: rhel9-grandparent
   running: false
   template:
     metadata:

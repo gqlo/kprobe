@@ -7,16 +7,35 @@ spec:
   - apiVersion: cdi.kubevirt.io/v1beta1
     kind: DataVolume
     metadata:
-      name: rhel9-placeholder
+      name: root-placeholder
     spec:
       pvc:
         accessModes:
         - ReadWriteMany
         resources:
           requests:
-            storage: 22Gi
+            storage: 21Gi
         volumeMode: Block
         storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        pvc:
+          namespace: "default"
+          name: rhel9-parent
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      name: data-placeholder
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 20Ti
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        blank: {}
   running: false
   template:
     metadata:
@@ -25,7 +44,7 @@ spec:
     spec:
       domain:
         cpu:
-          cores: 1
+          cores: 32
           sockets: 2
           threads: 1
         devices:
@@ -33,6 +52,9 @@ spec:
           - disk:
               bus: virtio
             name: vda
+          - disk:
+              bus: virtio
+            name: vdb
           interfaces:
           - masquerade: {}
             model: virtio
@@ -42,18 +64,17 @@ spec:
         features:
           smm:
             enabled: true
-        firmware:
-          bootloader:
-            efi:
-              secureBoot: false
         resources:
           requests:
-            memory: 4Gi
+            memory: 128Gi
       evictionStrategy: LiveMigrate
       networks:
       - name: default
         pod: {}
       volumes:
       - dataVolume:
-          name: rhel9-placeholder
+          name: root-placeholder
         name: vda
+      - dataVolume:
+          name: data-placeholder
+        name: vdb

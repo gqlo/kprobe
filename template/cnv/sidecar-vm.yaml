@@ -1,0 +1,92 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel9-sidecar
+  annotations:
+spec:
+  dataVolumeTemplates:
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      annotations:
+        cdi.kubevirt.io/smartCloneFromExistingSnapshot: default/vsnapshot
+      name: vda
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 22Gi
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        snapshot:
+          namespace: default
+          name: rhel9-snap
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
+      name: vdb
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteMany
+        resources:
+          requests:
+            storage: 150Gi
+        volumeMode: Block
+        storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+      source:
+        blank: {}
+  running: true
+  template:
+    metadata:
+      annotations:
+        hooks.kubevirt.io/hookSidecars: '[{"args": ["--version", "v1alpha2"], "image": "quay.io/kubevirt/sidecar-shim:20240108_99b6c4bdb", "configMap": {"name": "sidecar-script", "key": "my_script.sh", "hookPath": "/usr/bin/onDefineDomain"}}]'
+      labels:
+        kubevirt.io/domain: rhel9
+    spec:
+      domain:
+        ioThreadsPolicy: auto
+        cpu:
+          cores: 32
+          sockets: 2
+          threads: 1
+        devices:
+          blockMultiQueue: true
+          disks:
+          - disk:
+              bus: virtio
+            name: vda
+          - disk:
+              bus: virtio
+            name: vdb
+          interfaces:
+          - masquerade: {}
+            model: virtio
+            name: default
+          networkInterfaceMultiqueue: true
+          rng: {}
+        features:
+          smm:
+            enabled: true
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
+        resources:
+          requests:
+            memory: 128Gi
+            cpu: 8
+      evictionStrategy: LiveMigrate
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: vda
+          dataVolume:
+            name: vda
+        - name: vdb
+          dataVolume:
+            name: vdb 

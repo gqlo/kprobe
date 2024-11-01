@@ -1,16 +1,16 @@
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: DataVolume
 metadata:
-  name: rhel9-placeholder
+  name: rhel9-lvm
 spec:
   source:
       http:
         url: http://198.18.10.1:8800/rhel9_uefi.qcow2
   pvc:
     accessModes:
-      - ReadWriteMany
+      - ReadWriteOnce
     resources:
       requests:
         storage: 22Gi
     volumeMode: Block
-    storageClassName: ocs-storagecluster-ceph-rbd-virtualization
+    storageClassName: lvms-vg-nvme

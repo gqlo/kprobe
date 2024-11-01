@@ -8,22 +8,23 @@ fi
 {
 
 #declare -A io_rate
-workload=("randwrite" "randread")
-block_size=(4k 8k 16k 32k 64k 128k 256k 512k 1024k 2048k 4096k)
+workload=("randwrite" "randread" "write" "read")
+block_size=(4k)
 #cpuio, psync, libaio
 io_engine=libaio
-iodepth=(4 8 16 32 64 128)
-num_jobs=(2 4 6)
+iodepth=(1 2 4 8 16 32 64 128 256 512 1024)
+num_jobs=(1)
 size=50G
 lockmem=1G
 thinktime=1s
 cpuload=100
-io_rate=(5000000)
+io_rate=(50000000)
 rwmixread=70
 o_direct=1
 time_based=1
-run_time=3m
+run_time=5m
 run_name="$1"
+device_path="$2"
 echo "current run=$run_name"
 for load in ${workload[@]}; do
    for blk in ${block_size[@]}; do
@@ -32,9 +33,9 @@ for load in ${workload[@]}; do
 	    for iorate in ${io_rate[@]}; do
 	       output_file="/root/fio-output/$run_name-$hname-$blk-$load-depth-$depth-numjob-$job-rate-$iorate.json"
 	       if [[ $load == "randread" ]]; then
-		  fio_base_cmd="fio --name=$hname --filename=/dev/vdb --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --rwmixread=$rwmixread --numjobs=$job --runtime=$run_time --iodepth=$depth --time_based=$time_based --output-format=json+ --output=$output_file --rate_iops=$iorate"
+		  fio_base_cmd="fio --name=$hname --directory=data --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --rwmixread=$rwmixread --numjobs=$job --runtime=$run_time --iodepth=$depth --time_based=$time_based --output-format=json+ --output=$output_file --rate_iops=$iorate"
 	       else
-		  fio_base_cmd="fio --name=$hname --filename=/dev/vdb --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --rwmixread=$rwmixread --numjobs=$job --runtime=$run_time --iodepth=$depth --time_based=$time_based --output-format=json+ --output=$output_file --rate_iops=$iorate"
+		  fio_base_cmd="fio --name=$hname --directory=data --size=$size --ioengine=$io_engine --rw=$load --bs=$blk --direct=$o_direct --rwmixread=$rwmixread --numjobs=$job --runtime=$run_time --iodepth=$depth --time_based=$time_based --output-format=json+ --output=$output_file --rate_iops=$iorate"
 	       fi
 	       if [[ -f "$output_file" ]]; then
 		 sudo rm -rf "$output_file"
@@ -53,6 +54,7 @@ for load in ${workload[@]}; do
 		  eval "$fio_base_cmd"
 	       fi
 	       sudo rm -rf /root/fio-output/$hname
+	       sudo rm -rf /root/data/*
 	       echo "batch=$run_name, vmi=$hname, iodepth=$depth, iorate=$iorate, fio=$load, blk=$blk, ended $(date +"%Y-%m-%d %H:%M:%S")"
 	       sleep 60
 	    done

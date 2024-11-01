@@ -1,0 +1,7 @@
+apiVersion: csiaddons.openshift.io/v1alpha1
+kind: ReclaimSpaceJob
+metadata:
+  name: data-snap-100g
+spec:
+  target:
+    persistentVolumeClaim: data-snap-100g
