@@ -25,28 +25,17 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 17,
+  "id": 19,
   "links": [],
   "liveNow": false,
   "panels": [
-    {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 56,
-      "title": "Row title",
-      "type": "row"
-    },
     {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 1
+        "y": 0
       },
       "id": 6,
       "panels": [],
@@ -105,7 +94,7 @@
         "h": 3,
         "w": 2,
         "x": 0,
-        "y": 2
+        "y": 1
       },
       "id": 30,
       "options": {
@@ -191,7 +180,7 @@
         "h": 3,
         "w": 2,
         "x": 2,
-        "y": 2
+        "y": 1
       },
       "id": 26,
       "options": {
@@ -259,7 +248,7 @@
         "h": 3,
         "w": 2,
         "x": 4,
-        "y": 2
+        "y": 1
       },
       "id": 24,
       "options": {
@@ -326,7 +315,7 @@
         "h": 3,
         "w": 2,
         "x": 6,
-        "y": 2
+        "y": 1
       },
       "id": 38,
       "options": {
@@ -393,7 +382,7 @@
         "h": 3,
         "w": 2,
         "x": 8,
-        "y": 2
+        "y": 1
       },
       "id": 28,
       "options": {
@@ -461,7 +450,7 @@
         "h": 3,
         "w": 3,
         "x": 10,
-        "y": 2
+        "y": 1
       },
       "id": 32,
       "options": {
@@ -527,7 +516,7 @@
         "h": 3,
         "w": 2,
         "x": 13,
-        "y": 2
+        "y": 1
       },
       "id": 36,
       "options": {
@@ -595,7 +584,7 @@
         "h": 3,
         "w": 4,
         "x": 15,
-        "y": 2
+        "y": 1
       },
       "id": 34,
       "options": {
@@ -663,7 +652,7 @@
         "h": 3,
         "w": 3,
         "x": 19,
-        "y": 2
+        "y": 1
       },
       "id": 43,
       "options": {
@@ -760,7 +749,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 4
       },
       "id": 52,
       "options": {
@@ -859,7 +848,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 4
       },
       "id": 51,
       "options": {
@@ -958,7 +947,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 12
       },
       "id": 40,
       "options": {
@@ -971,7 +960,7 @@
           "placement": "bottom",
           "showLegend": true,
           "sortBy": "Max",
-          "sortDesc": false
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "single",
@@ -985,7 +974,7 @@
             "uid": "PF55DCC5EC58ABF5A"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum(container_memory_rss{pod=~\"virt-launcher.*\"}) by (pod), \"vmi\", \"$1\", \"pod\", \"virt-launcher-(.*)-[^-]+$\") ",
+          "expr": "label_replace(sum(container_memory_rss{pod=~\"virt-launcher.*\"}) by (pod), \"vmi\", \"$1\", \"pod\", \"virt-launcher-(.*)-[^-]+$\")",
           "legendFormat": "{{vmi}}",
           "range": true,
           "refId": "A"
@@ -1057,7 +1046,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 12
       },
       "id": 42,
       "options": {
@@ -1155,7 +1144,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 20
       },
       "id": 54,
       "options": {
@@ -1254,7 +1243,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 21
+        "y": 20
       },
       "id": 53,
       "options": {
@@ -1296,7 +1285,216 @@
         "h": 1,
         "w": 24,
         "x": 0,
+        "y": 28
+      },
+      "id": 56,
+      "panels": [],
+      "title": "IOPS",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PF55DCC5EC58ABF5A"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "green",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "iops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
         "y": 29
+      },
+      "id": 57,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PF55DCC5EC58ABF5A"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(kubevirt_vmi_storage_iops_read_total[60s])) by (name)",
+          "legendFormat": "{{vmi}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "VMI Read IOPS",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PF55DCC5EC58ABF5A"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "green",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "iops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "id": 58,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PF55DCC5EC58ABF5A"
+          },
+          "editorMode": "code",
+          "expr": " sum(rate(kubevirt_vmi_storage_iops_write_total[60s])) by (name)",
+          "legendFormat": "{{vmi}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "VMI Write IOPS",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
       },
       "id": 45,
       "panels": [],
@@ -1335,7 +1533,7 @@
         "h": 3,
         "w": 2,
         "x": 0,
-        "y": 30
+        "y": 38
       },
       "id": 47,
       "options": {
@@ -1402,7 +1600,7 @@
         "h": 3,
         "w": 2,
         "x": 2,
-        "y": 30
+        "y": 38
       },
       "id": 50,
       "options": {
@@ -1469,7 +1667,7 @@
         "h": 3,
         "w": 2,
         "x": 4,
-        "y": 30
+        "y": 38
       },
       "id": 49,
       "options": {
@@ -1536,7 +1734,7 @@
         "h": 3,
         "w": 2,
         "x": 6,
-        "y": 30
+        "y": 38
       },
       "id": 48,
       "options": {
@@ -1587,6 +1785,6 @@
   "timezone": "utc",
   "title": "OpenShift Virtualization Performance",
   "uid": "tzZtO3mNk",
-  "version": 75,
+  "version": 13,
   "weekStart": ""
 }
