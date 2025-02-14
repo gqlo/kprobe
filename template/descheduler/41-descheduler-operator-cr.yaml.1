@@ -1,0 +1,16 @@
+apiVersion: operator.openshift.io/v1
+kind: KubeDescheduler
+metadata:
+  name: cluster
+  namespace: openshift-kube-descheduler-operator
+spec:
+  mode: Automatic  # OR Predictive
+  managementState: Managed
+  deschedulingIntervalSeconds: 60
+  profiles:
+  - LongLifecycle
+  - EvictPodsWithPVC
+  - EvictPodsWithLocalStorage
+  profileCustomizations:
+    devEnableEvictionsInBackground: true
+    devActualUtilizationProfile: PrometheusCPUPSIPressure
