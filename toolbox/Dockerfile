@@ -1,3 +1,4 @@
+# customized toolbox image can be used as debugging container process: kubectl debug -it <pod> --image=<quay.io> --target=<container> --share-processes
 FROM fedora:40
 
 RUN dnf install -y \
