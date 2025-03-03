@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dd-experiment
+spec:
+  containers:
+  - name: block-writer
+    image: quay.io/rh_ee_lguoqing/ebpf_94 
+    command: ["/bin/sleep", "infinity"]  
+    securityContext:
+      privileged: true
+    resources:
+      limits:
+        cpu: 750m
+        memory: 600M
+      requests:
+        cpu: 100m
+        memory: 60M
+    volumeDevices:  
+    - name: blank-1tb-disk
+      devicePath: /dev/xvdg 
+    volumeMounts:
+    - name: kernel-debug
+      mountPath: /sys/kernel/debug
+  volumes:
+  - name: blank-1tb-disk
+    persistentVolumeClaim:
+      claimName: blank-1tb-disk
+  - name: kernel-debug
+    hostPath:
+      path: /sys/kernel/debug
+      type: Directory
